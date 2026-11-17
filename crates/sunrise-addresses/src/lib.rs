@@ -9,9 +9,6 @@
 /// files sends the player there.
 pub const WEBSITE: &str = "https://playsunrise.net";
 
-/// Sunrise's source repository, which the Mods screen's Sunrise row links.
-pub const REPOSITORY: &str = "https://github.com/sunrise-org/sunrise";
-
 /// The repository's licence file, linked from the Mods screen's Sunrise row.
 pub const LICENSE: &str = "https://github.com/sunrise-org/sunrise/blob/main/LICENSE";
 
