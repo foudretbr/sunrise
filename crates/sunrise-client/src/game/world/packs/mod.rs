@@ -10,18 +10,19 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use sunrise_hooks::packs::Message;
 use sunrise_client::{
     assets::Assets,
     datapack::DataPack,
     gfx::PreparedTextures,
     hud::HudAtlas,
-    lang, pack_source_ui,
+    lang,
     pack_screen::{self, Compat, PackInfo, Source as PackSource},
+    pack_source_ui,
     packs::{self, Pack, Position},
     streaming::WorkerContext,
     text::{Style, Text},
 };
+use sunrise_hooks::packs::Message;
 
 /// Where overlay roots are built (beside options.txt).
 pub fn cache_dir() -> PathBuf {
