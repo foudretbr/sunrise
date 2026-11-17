@@ -137,6 +137,8 @@ pub struct Identity {
     rustc: String,
     target: String,
     side: String,
+    /// The game executable's link policy (the guest stack size). Only the executable's link takes
+    /// it: no mod compile reads it.
     pub link_args: Vec<String>,
     #[serde(default)]
     pub registry_lock: Option<String>,
@@ -478,22 +480,14 @@ fn standard_library(rust: &dyn Toolchain) -> Result<PathBuf, String> {
 
 /// rustc with the prebuilt game's settings, its libraries and `out`'s on the search path, and the
 /// native libraries the game's build scripts link (`native/`: the `windows` crates' import
-/// libraries).
-fn rustc(
-    rust: &dyn Toolchain,
-    game: &Path,
-    out: &Path,
-    edition: &str,
-    link_args: &[String],
-) -> Command {
+/// libraries). The identity's `link_args` are the game executable's link policy and never reach a
+/// library.
+fn rustc(rust: &dyn Toolchain, game: &Path, out: &Path, edition: &str) -> Command {
     let mut cmd = rustc_with(
         rust,
         &[&game.join("deps"), &game.join("host"), out],
         edition,
     );
-    for arg in link_args {
-        cmd.arg("-C").arg(format!("link-arg={arg}"));
-    }
     cmd.arg("-L")
         .arg(format!("native={}", game.join("native").display()));
     cmd
@@ -737,7 +731,7 @@ pub fn compile(
             let facade = &generated[id];
             fs::write(&source, &facade.source).map_err(|e| e.to_string())?;
             let rlib = out.join(format!("libinternals_{id}.rlib"));
-            let mut cmd = rustc(rust, game, out, "2024", &sdk.link_args);
+            let mut cmd = rustc(rust, game, out, "2024");
             cmd.args(["--crate-type", "rlib", "--crate-name", "internals"])
                 .arg("-C")
                 .arg(format!("metadata={id}"))
@@ -765,7 +759,7 @@ pub fn compile(
             project,
             &declared[index],
             out,
-            |edition| rustc(rust, game, out, edition, &sdk.link_args),
+            |edition| rustc(rust, game, out, edition),
             |package| match package {
                 "internals" => &facades[id],
                 _ => &libraries[package],
@@ -794,7 +788,7 @@ pub fn compile(
         &rlibs,
         &crate_names,
         &sdk,
-        |edition| rustc(rust, game, out, edition, &sdk.link_args),
+        |edition| rustc(rust, game, out, edition),
     )?;
     let mut installed = runtime_libraries(rust, &sdk, game)?;
     for &index in &resolution.order {
@@ -824,7 +818,7 @@ pub fn compile(
         let saved = library.with_extension("fingerprint");
         let unchanged =
             library.is_file() && fs::read_to_string(&saved).ok().as_deref() == Some(&fingerprint);
-        let mut cmd = rustc(rust, game, out, "2024", &sdk.link_args);
+        let mut cmd = rustc(rust, game, out, "2024");
         cmd.args(["--crate-type", "dylib", "--crate-name", "sunrise_patch"]);
         for (name, path) in wrapper_externs(&deps)? {
             cmd.arg("--extern")
@@ -1406,6 +1400,42 @@ mod tests {
         sdk.facade_crates.insert("fixture_meta".into());
         assert!(facade_library(&deps, "fixture_meta", &sdk).is_err());
         fs::remove_dir_all(deps).unwrap();
+    }
+
+    #[test]
+    fn a_mod_library_compile_holds_none_of_the_executables_link_policy() {
+        let sdk: Identity = serde_json::from_value(serde_json::json!({
+            "commit": "test", "rustc": "test", "target": "test", "side": "client",
+            "link_args": ["-Wl,-stack_size,0x1000000", "/STACK:16777216"],
+        }))
+        .unwrap();
+        let toolchain = crate::rust::Unpacked {
+            dir: "toolchain".into(),
+            target: "test".into(),
+            cargo_home: "cargo-home".into(),
+            cargo_config: Vec::new(),
+            c_bin: None,
+        };
+        let cmd = rustc(&toolchain, Path::new("game"), Path::new("out"), "2024");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        for policy in &sdk.link_args {
+            assert!(
+                !args.iter().any(|arg| arg.contains(policy.as_str())),
+                "{policy} in {args:?}"
+            );
+        }
+        assert!(args.iter().any(|arg| arg == "prefer-dynamic"), "{args:?}");
+        let rpath = match std::env::consts::OS {
+            "linux" => Some("link-arg=-Wl,-rpath,$ORIGIN"),
+            "macos" => Some("link-arg=-Wl,-rpath,@loader_path"),
+            _ => None,
+        };
+        if let Some(rpath) = rpath {
+            assert!(args.iter().any(|arg| arg == rpath), "{args:?}");
+        }
     }
 
     #[test]
