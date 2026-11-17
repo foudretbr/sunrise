@@ -256,6 +256,7 @@ impl Game<'_> {
         let browsing = self.settings.extras.pack_browser;
         pack_source_ui::allow_builtin(browsing);
         let o = &mut self.ui.options;
+        o.pack_source_polled = true;
         o.pack_infos = infos;
         o.pack_configs = configs;
         o.pack_selection = self.settings.resource_packs.clone();
@@ -279,7 +280,7 @@ impl Game<'_> {
         let Some(view) = &mut screen.browser else {
             return;
         };
-        let source = pack_source_ui::source();
+        let source = view.session.source();
         let Some(message) = source.poll() else {
             return;
         };

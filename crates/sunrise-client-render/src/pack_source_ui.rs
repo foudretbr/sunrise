@@ -50,16 +50,8 @@ fn tr(key: &str) -> Text {
 }
 
 /// The source the pack screen browses: the first enabled registered one, else the built-in.
-pub fn source() -> &'static dyn Source {
-    pick(packs::engine::all())
-}
-
-fn pick(sources: &[&'static dyn Source]) -> &'static dyn Source {
-    sources
-        .iter()
-        .copied()
-        .find(|s| s.enabled())
-        .unwrap_or(&*BUILTIN)
+fn source() -> &'static dyn Source {
+    packs::engine::source().unwrap_or(&*BUILTIN)
 }
 
 /// Whether the Add button shows.
@@ -144,9 +136,36 @@ impl Geom {
     }
 }
 
+/// One browse screen's session with the source chosen when it opened, closed when it drops.
+pub struct Session(&'static dyn Source);
+
+impl Session {
+    fn open(source: &'static dyn Source) -> Self {
+        source.open();
+        Self(source)
+    }
+    pub fn source(&self) -> &'static dyn Source {
+        self.0
+    }
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.0.close();
+    }
+}
+
+impl std::fmt::Debug for Session {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Session")
+    }
+}
+
 /// The browse screen's state, owned by the pack screen.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct View {
+    /// Every search, download and poll of this screen goes to this session's source.
+    pub session: Session,
     /// What the last search ran on.
     pub query: String,
     pub hits: Vec<Hit>,
@@ -170,6 +189,10 @@ pub struct View {
 impl View {
     /// Opens on `query`, the text already in the pack filter, and searches it.
     pub fn open(m: &Measure, query: &str) -> Self {
+        Self::open_on(source(), m, query)
+    }
+
+    fn open_on(source: &'static dyn Source, m: &Measure, query: &str) -> Self {
         let mut field = TextField::new(0, 0, SEARCH_W, 18);
         field.hint = Some(tr("sunrise.pack.searchHint").with_style(&Style {
             color: Some(d::GRAY),
@@ -178,6 +201,7 @@ impl View {
         }));
         field.set_value(m, query);
         let mut view = Self {
+            session: Session::open(source),
             query: String::new(),
             hits: Vec::new(),
             busy: false,
@@ -189,25 +213,19 @@ impl View {
             icon_keys: Vec::new(),
         };
         view.query = query.to_owned();
-        let source = source();
-        source.open();
-        view.search_with(source);
+        view.search();
         view
     }
 
     /// Searches for the current query and filters, unless something is already running.
     pub fn search(&mut self) {
-        self.search_with(source());
-    }
-
-    pub fn search_with(&mut self, source: &dyn Source) {
         if self.busy {
             return;
         }
         self.busy = true;
         self.status = None;
         let chosen: Vec<usize> = self.filters.iter().copied().collect();
-        source.search(&self.query, &chosen);
+        self.session.source().search(&self.query, &chosen);
     }
 
     /// Runs the search on what is typed in the box (the Search button and Enter).
@@ -218,23 +236,13 @@ impl View {
 
     /// Starts installing result `index` into `dir`.
     pub fn download(&mut self, index: usize, dir: &Path, game_version: &str) {
-        self.download_with(source(), index, dir, game_version);
-    }
-
-    pub fn download_with(
-        &mut self,
-        source: &dyn Source,
-        index: usize,
-        dir: &Path,
-        game_version: &str,
-    ) {
         if self.busy || index >= self.hits.len() {
             return;
         }
         self.installing = Some(index);
         self.busy = true;
         self.status = None;
-        source.download(index, dir, game_version);
+        self.session.source().download(index, dir, game_version);
     }
 
     /// Takes in what the source's worker finished.
@@ -274,13 +282,12 @@ impl View {
         }
     }
 
-    /// Frees the icons it downloaded and tells the source the screen is gone.
-    pub fn close(&mut self, icons: &mut HashMap<String, Arc<[u8]>>) {
+    /// Frees the icons it downloaded; dropping the view then ends its session.
+    pub fn close(mut self, icons: &mut HashMap<String, Arc<[u8]>>) {
         for key in self.icon_keys.drain(..) {
             icons.remove(&key);
         }
         icons.shrink_to_fit();
-        source().close();
     }
 
     /// A left click on the browse screen; it is modal, so nothing beneath takes one.
@@ -302,7 +309,7 @@ impl View {
             self.submit();
             return Click::Handled;
         }
-        let count = source().filters().len();
+        let count = self.session.source().filters().len();
         for i in 0..count as i32 {
             let (fx, fy, fw, fh) = g.filter_box(i);
             if d::inside(point, fx, fy, fw, fh) {
@@ -388,7 +395,7 @@ impl View {
             ..Style::default()
         });
         d::string_widget(out, m, &heading, 6, TOPBAR_H + 5, 0);
-        for (i, key) in source().filters().iter().enumerate() {
+        for (i, key) in self.session.source().filters().iter().enumerate() {
             let (fx, fy, fw, fh) = g.filter_box(i as i32);
             let on = self.filters.contains(&i);
             if d::inside(mouse, fx, fy, fw, fh) {
@@ -630,10 +637,20 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    #[derive(Default)]
     struct Fake {
         searches: AtomicUsize,
         downloads: AtomicUsize,
+        closes: AtomicUsize,
+    }
+
+    impl Fake {
+        const fn new() -> Self {
+            Self {
+                searches: AtomicUsize::new(0),
+                downloads: AtomicUsize::new(0),
+                closes: AtomicUsize::new(0),
+            }
+        }
     }
 
     impl Source for Fake {
@@ -654,7 +671,9 @@ mod tests {
         fn poll(&self) -> Option<Message> {
             None
         }
-        fn close(&self) {}
+        fn close(&self) {
+            self.closes.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     fn hit() -> Hit {
@@ -668,8 +687,9 @@ mod tests {
         }
     }
 
-    fn view() -> View {
+    fn view(fake: &'static Fake) -> View {
         View {
+            session: Session::open(fake),
             query: String::new(),
             hits: Vec::new(),
             busy: false,
@@ -684,10 +704,11 @@ mod tests {
 
     #[test]
     fn one_search_runs_at_a_time_and_results_free_the_view() {
-        let fake = Fake::default();
-        let mut v = view();
-        v.search_with(&fake);
-        v.search_with(&fake);
+        static FAKE: Fake = Fake::new();
+        let fake = &FAKE;
+        let mut v = view(fake);
+        v.search();
+        v.search();
         assert_eq!(fake.searches.load(Ordering::Relaxed), 1);
         v.apply(&Message::Results(vec![hit()]));
         assert!(!v.busy);
@@ -696,16 +717,17 @@ mod tests {
 
     #[test]
     fn a_download_marks_its_card_installed_and_a_failure_shows_its_reason() {
-        let fake = Fake::default();
-        let mut v = view();
+        static FAKE: Fake = Fake::new();
+        let fake = &FAKE;
+        let mut v = view(fake);
         v.apply(&Message::Results(vec![hit()]));
-        v.download_with(&fake, 0, Path::new("."), "26.3");
-        v.download_with(&fake, 0, Path::new("."), "26.3");
+        v.download(0, Path::new("."), "26.3");
+        v.download(0, Path::new("."), "26.3");
         assert_eq!(fake.downloads.load(Ordering::Relaxed), 1);
         assert_eq!(v.installing, Some(0));
         v.apply(&Message::Downloaded("p.zip".into()));
         assert!(v.installed.contains(&0) && !v.busy && v.installing.is_none());
-        v.download_with(&fake, 0, Path::new("."), "26.3");
+        v.download(0, Path::new("."), "26.3");
         v.apply(&Message::Failed("offline".into()));
         assert_eq!(v.status.as_deref(), Some("offline"));
         assert!(v.installing.is_none());
@@ -737,22 +759,14 @@ mod tests {
     }
 
     #[test]
-    fn a_registered_enabled_source_wins_over_the_built_in() {
-        static FAKE: Fake = Fake {
-            searches: AtomicUsize::new(0),
-            downloads: AtomicUsize::new(0),
-        };
-        let fake: &'static dyn Source = &FAKE;
-        let won = pick(&[fake]);
-        assert!(std::ptr::addr_eq(
-            won as *const dyn Source,
-            &FAKE as *const Fake
-        ));
-        let fallback = pick(&[]);
-        assert!(std::ptr::addr_eq(
-            fallback as *const dyn Source,
-            &*BUILTIN as *const Builtin
-        ));
+    fn a_view_ends_its_session_however_it_goes() {
+        static FAKE: Fake = Fake::new();
+        let mut icons = HashMap::new();
+        view(&FAKE).close(&mut icons);
+        assert_eq!(FAKE.closes.load(Ordering::Relaxed), 1);
+        // Escape, an install that rebuilds the screen, or leaving it: the view is just dropped.
+        drop(view(&FAKE));
+        assert_eq!(FAKE.closes.load(Ordering::Relaxed), 2);
     }
 
     #[test]
@@ -767,14 +781,5 @@ mod tests {
         b.open();
         let seats = b.seats();
         assert!(!seats[&sunrise_hooks::seat()].browser.as_ref().unwrap().busy);
-    }
-
-    #[test]
-    fn the_built_in_source_is_enabled_only_when_allowed() {
-        allow_builtin(false);
-        assert!(!available());
-        allow_builtin(true);
-        assert!(available());
-        allow_builtin(false);
     }
 }

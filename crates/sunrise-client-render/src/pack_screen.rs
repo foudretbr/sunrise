@@ -373,7 +373,7 @@ pub enum Action {
 }
 
 /// The pack screen and its state.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct PackScreen {
     /// `resourcePack.title`, or `dataPack.title` from Create World.
     pub title: Text,
@@ -1111,7 +1111,7 @@ impl PackScreen {
             return Some(match view.click(m, g, x, y) {
                 Click::Pick(i) => Action::BrowsePick(i),
                 Click::Close => {
-                    if let Some(mut view) = self.browser.take() {
+                    if let Some(view) = self.browser.take() {
                         view.close(&mut self.icons);
                     }
                     // Back to the vanilla pack screen, which wants no backdrop.
