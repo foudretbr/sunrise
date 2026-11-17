@@ -93,6 +93,12 @@ pub mod hud {
     pub use sunrise_hooks::hud::{Canvas, Corner, Layer, register};
 }
 
+/// What the engine draws differently for a crate above, per player (docs/layers.md, "Look"). Not
+/// [`hooks::Look`], which is the players' look (`sunrise_hooks::players::Look`).
+pub mod look {
+    pub use sunrise_hooks::look::{Chat, Look, update};
+}
+
 /// The multiplayer server list as vanilla stores it (`servers.dat`): read, write, add, remove,
 /// and the lock held while it is read and written back.
 #[cfg(feature = "protocol")]

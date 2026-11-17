@@ -96,9 +96,9 @@ fn add_sections(groups: &mut Vec<Group<ExtraRow>>) {
                     continue;
                 }
                 added::Row::Note(text) => Row::new(id, text, Value::Note).live(false),
-                added::Row::Toggle { label, on } => {
-                    Row::new(id, lang::get(label), Value::Switch(on))
-                }
+                added::Row::Toggle {
+                    label, on, active, ..
+                } => Row::new(id, lang::get(label), Value::Switch(on)).live(active),
                 added::Row::Cycle { label, value } => {
                     Row::new(id, lang::get(label), Value::Choice(label_text(value)))
                 }
@@ -117,9 +117,11 @@ fn add_sections(groups: &mut Vec<Group<ExtraRow>>) {
                     active: true,
                     ..
                 } => Row::new(id, lang::get(label), Value::Press),
-                added::Row::Key { label, key } => {
+                added::Row::Key {
+                    label, key, active, ..
+                } => {
                     let key = crate::keybinds::display_name(&key).plain();
-                    Row::new(id, lang::get(label), Value::Read(key))
+                    Row::new(id, lang::get(label), Value::Read(key)).live(active)
                 }
                 // A row kind newer than this engine.
                 _ => continue,
@@ -150,7 +152,7 @@ fn steps(page: usize, r: usize) -> bool {
     }
     matches!(
         rows.get(r),
-        Some(added::Row::Toggle { .. } | added::Row::Cycle { .. })
+        Some(added::Row::Toggle { active: true, .. } | added::Row::Cycle { .. })
     )
 }
 
@@ -445,10 +447,10 @@ mod tests {
             added::Place::Extras
         }
         fn rows(&self, rows: &mut Vec<added::Row>) {
-            rows.push(added::Row::Toggle {
-                label: "test.section.switch",
-                on: *self.on.lock().unwrap(),
-            });
+            rows.push(added::Row::toggle(
+                "test.section.switch",
+                *self.on.lock().unwrap(),
+            ));
             rows.push(added::Row::Heading("test.section.heading"));
             rows.push(added::Row::Cycle {
                 label: "test.section.step",
@@ -530,6 +532,50 @@ mod tests {
         assert_eq!(ids("test.section.heading"), own);
         let all = rows_of(&s);
         assert!(!all.iter().any(|r| matches!(r.id, ExtraRow::Added(0, _))));
+    }
+
+    /// A page with a greyed switch and a greyed key.
+    struct Greyed;
+    impl added::Page for Greyed {
+        fn id(&self) -> &'static str {
+            "test.greyed"
+        }
+        fn title(&self) -> &'static str {
+            "sunrise.extras.header.multiplayer"
+        }
+        fn place(&self) -> added::Place {
+            added::Place::Extras
+        }
+        fn rows(&self, rows: &mut Vec<added::Row>) {
+            rows.push(added::Row::toggle("test.greyed.switch", true).active(false));
+            rows.push(added::Row::key("test.greyed.key", "key.keyboard.z").active(false));
+        }
+        fn act(&self, _: usize, _: Act) {
+            panic!("a greyed row heard an act");
+        }
+    }
+
+    /// A registered switch or key that is inactive is drawn greyed, and a press does nothing.
+    #[test]
+    fn an_inactive_registered_switch_and_key_are_greyed() {
+        static GREYED: Greyed = Greyed;
+        static PAGES: [&dyn added::Page; 1] = [&GREYED];
+        TEST_PAGES.set(Some(&PAGES));
+        let s = Settings::default();
+        let all = rows_of(&s);
+        for r in 0..2 {
+            let row = all.iter().find(|x| x.id == ExtraRow::Added(0, r)).unwrap();
+            assert!(!row.live, "row {r} is greyed");
+        }
+        assert!(!steps(0, 0));
+        let mut shell = Shell::<ExtrasScreen>::default();
+        let at = shell.point_at(&s, SIZE, ExtraRow::Added(0, 0));
+        let mut s = s;
+        assert!(
+            shell
+                .click(&mut s, at, SIZE, false, false, false)
+                .is_empty()
+        );
     }
 
     /// A click flips the switch, a Shift click steps the number back, the wheel steps it, and the
