@@ -209,55 +209,14 @@ pub fn free_path(dir: &Path, name: &str) -> Option<PathBuf> {
         .find(|candidate| !candidate.exists())
 }
 
-/// The browser's state, owned by the pack screen.
+/// The transport behind the built-in source: the worker channel, the last hits and the
+/// one-at-a-time guard. What the screen shows lives in `pack_source_ui::View`.
 pub struct Browser {
-    pub query: String,
-    pub hits: Vec<Hit>,
-    pub selected: Option<usize>,
-    pub scroll: f64,
+    hits: Vec<Hit>,
     /// Set while a search or a download is in flight.
-    pub busy: bool,
-    /// Already-translated text, shown in place of the list.
-    pub status: Option<String>,
-    /// The hit an install is running for.
-    pub installing: Option<usize>,
-    /// Hits already installed this visit, by index.
-    pub installed: std::collections::BTreeSet<usize>,
-    /// The sidebar filters that are on, as indices into [`FILTERS`].
-    pub filters: std::collections::BTreeSet<usize>,
+    pub(crate) busy: bool,
     sender: Sender<Message>,
     receiver: Receiver<Message>,
-}
-
-impl std::fmt::Debug for Browser {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Browser")
-            .field("query", &self.query)
-            .field("hits", &self.hits.len())
-            .field("busy", &self.busy)
-            .finish()
-    }
-}
-
-impl Clone for Browser {
-    /// The screen is cloned for drawing; a clone carries the state, not the
-    /// worker's channel, and starts its own.
-    fn clone(&self) -> Self {
-        let (sender, receiver) = channel();
-        Self {
-            query: self.query.clone(),
-            hits: self.hits.clone(),
-            selected: self.selected,
-            scroll: self.scroll,
-            busy: self.busy,
-            status: self.status.clone(),
-            installing: self.installing,
-            installed: self.installed.clone(),
-            filters: self.filters.clone(),
-            sender,
-            receiver,
-        }
-    }
 }
 
 impl Default for Browser {
@@ -270,58 +229,35 @@ impl Browser {
     pub fn new() -> Self {
         let (sender, receiver) = channel();
         Self {
-            query: String::new(),
             hits: Vec::new(),
-            selected: None,
-            scroll: 0.0,
             busy: false,
-            status: None,
-            installing: None,
-            installed: Default::default(),
-            filters: Default::default(),
             sender,
             receiver,
         }
     }
 
-    /// Anything the worker has finished since the last call. The caller
-    /// refreshes its pack list when a [`Message::Downloaded`] comes back.
+    /// Anything the worker has finished since the last call.
     pub fn poll(&mut self) -> Option<Message> {
         let message = self.receiver.try_recv().ok()?;
-        let was_busy = self.busy;
-        self.busy = false;
         match &message {
             Message::Results(hits) => {
                 self.hits = hits.clone();
-                self.selected = None;
-                self.scroll = 0.0;
-                self.status = None;
+                self.busy = false;
             }
-            Message::Downloaded(_) => {
-                self.status = None;
-                if let Some(i) = self.installing.take() {
-                    self.installed.insert(i);
-                }
-            }
-            // An icon is the screen's to keep; it does not end a search.
-            Message::Icon(..) => self.busy = was_busy,
-            Message::Failed(reason) => {
-                self.status = Some(reason.clone());
-                self.installing = None;
-            }
-            _ => {}
+            // An icon does not end a search.
+            Message::Icon(..) => {}
+            _ => self.busy = false,
         }
         Some(message)
     }
 
-    /// Searches for the current query on a worker thread.
-    pub fn search(&mut self) {
+    /// Searches for `query` with the chosen filters (indices into [`FILTERS`]) on a worker thread.
+    pub fn search(&mut self, query: &str, chosen: &[usize]) {
         if self.busy {
             return;
         }
         self.busy = true;
-        self.status = None;
-        let url = search_url(&self.query, &self.filters);
+        let url = search_url(query, &chosen.iter().copied().collect());
         let sender = self.sender.clone();
         spawn("pack-browser-search", move || {
             let message = match get_text(&url) {
@@ -363,7 +299,7 @@ impl Browser {
         });
     }
 
-    /// Downloads the selected pack into `dir` on a worker thread.
+    /// Downloads result `index` into `dir` on a worker thread.
     pub fn download(&mut self, index: usize, dir: &Path, game_version: &str) {
         if self.busy {
             return;
@@ -371,9 +307,7 @@ impl Browser {
         let Some(hit) = self.hits.get(index) else {
             return;
         };
-        self.installing = Some(index);
         self.busy = true;
-        self.status = None;
         let url = versions_url(&hit.id, game_version);
         let dir = dir.to_path_buf();
         let sender = self.sender.clone();

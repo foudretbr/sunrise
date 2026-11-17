@@ -942,10 +942,8 @@ impl PackScreen {
     }
     /// Typed text, when the search box has the focus.
     pub fn type_text(&mut self, m: &Measure, s: &str) {
-        if self.browser.is_some() {
-            if let Some(view) = &mut self.browser {
-                view.field.insert_text(m, s);
-            }
+        if let Some(view) = &mut self.browser {
+            view.field.insert_text(m, s);
             return;
         }
         if self.confirm.is_none() && self.focus == Focus::Search && self.search.insert_text(m, s) {
@@ -969,10 +967,8 @@ impl PackScreen {
     }
     /// Backspace in the search box.
     pub fn erase(&mut self, m: &Measure, count: isize) {
-        if self.browser.is_some() {
-            if let Some(view) = &mut self.browser {
-                view.field.delete_chars(m, -count);
-            }
+        if let Some(view) = &mut self.browser {
+            view.field.delete_chars(m, -count);
             return;
         }
         if self.confirm.is_none()

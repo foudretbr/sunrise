@@ -273,15 +273,13 @@ impl Game<'_> {
     /// Sunrise's pack browser: what its worker finished since the last
     /// frame. A pack that landed becomes an entry in the available list.
     pub(super) fn drive_pack_browser(&mut self) {
-        let Some(source) = pack_source_ui::source() else {
-            return;
-        };
         let Some(screen) = &mut self.ui.options.pack_screen else {
             return;
         };
         let Some(view) = &mut screen.browser else {
             return;
         };
+        let source = pack_source_ui::source();
         let Some(message) = source.poll() else {
             return;
         };

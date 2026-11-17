@@ -39,6 +39,8 @@ pub trait Source: Sync {
     fn enabled(&self) -> bool;
     /// The translation keys of the filters on offer; `search` gets indices into this list.
     fn filters(&self) -> &'static [&'static str];
+    /// The player opened the browse screen: start this seat's session afresh, dropping any left over.
+    fn open(&self);
     /// Starts a search for `query` with the `chosen` filters on.
     fn search(&self, query: &str, chosen: &[usize]);
     /// Starts fetching the icons of the last results.
@@ -91,6 +93,7 @@ mod tests {
                 fn filters(&self) -> &'static [&'static str] {
                     &[]
                 }
+                fn open(&self) {}
                 fn search(&self, _: &str, _: &[usize]) {}
                 fn fetch_icons(&self) {}
                 fn download(&self, _: usize, _: &Path, _: &str) {}

@@ -50,13 +50,21 @@ fn tr(key: &str) -> Text {
 }
 
 /// The source the pack screen browses: the first enabled registered one, else the built-in.
-pub fn source() -> Option<&'static dyn Source> {
-    packs::engine::source().or(Some(&*BUILTIN as &dyn Source))
+pub fn source() -> &'static dyn Source {
+    pick(packs::engine::all())
+}
+
+fn pick(sources: &[&'static dyn Source]) -> &'static dyn Source {
+    sources
+        .iter()
+        .copied()
+        .find(|s| s.enabled())
+        .unwrap_or(&*BUILTIN)
 }
 
 /// Whether the Add button shows.
 pub fn available() -> bool {
-    source().is_some_and(|s| s.enabled())
+    source().enabled()
 }
 
 /// Lets the built-in source be used by this player ([`Source::enabled`]), as the `packBrowser`
@@ -181,15 +189,15 @@ impl View {
             icon_keys: Vec::new(),
         };
         view.query = query.to_owned();
-        view.search();
+        let source = source();
+        source.open();
+        view.search_with(source);
         view
     }
 
     /// Searches for the current query and filters, unless something is already running.
     pub fn search(&mut self) {
-        if let Some(source) = source() {
-            self.search_with(source);
-        }
+        self.search_with(source());
     }
 
     pub fn search_with(&mut self, source: &dyn Source) {
@@ -210,9 +218,7 @@ impl View {
 
     /// Starts installing result `index` into `dir`.
     pub fn download(&mut self, index: usize, dir: &Path, game_version: &str) {
-        if let Some(source) = source() {
-            self.download_with(source, index, dir, game_version);
-        }
+        self.download_with(source(), index, dir, game_version);
     }
 
     pub fn download_with(
@@ -274,9 +280,7 @@ impl View {
             icons.remove(&key);
         }
         icons.shrink_to_fit();
-        if let Some(source) = source() {
-            source.close();
-        }
+        source().close();
     }
 
     /// A left click on the browse screen; it is modal, so nothing beneath takes one.
@@ -298,7 +302,7 @@ impl View {
             self.submit();
             return Click::Handled;
         }
-        let count = source().map_or(0, |s| s.filters().len());
+        let count = source().filters().len();
         for i in 0..count as i32 {
             let (fx, fy, fw, fh) = g.filter_box(i);
             if d::inside(point, fx, fy, fw, fh) {
@@ -384,7 +388,7 @@ impl View {
             ..Style::default()
         });
         d::string_widget(out, m, &heading, 6, TOPBAR_H + 5, 0);
-        for (i, key) in source().map_or(&[][..], |s| s.filters()).iter().enumerate() {
+        for (i, key) in source().filters().iter().enumerate() {
             let (fx, fy, fw, fh) = g.filter_box(i as i32);
             let on = self.filters.contains(&i);
             if d::inside(mouse, fx, fy, fw, fh) {
@@ -574,16 +578,20 @@ impl Source for Builtin {
     fn filters(&self) -> &'static [&'static str] {
         &FILTER_KEYS
     }
-    fn search(&self, query: &str, chosen: &[usize]) {
-        let mut seats = self.seats();
-        let browser = seats
+    fn open(&self) {
+        self.seats()
             .entry(sunrise_hooks::seat())
             .or_default()
-            .browser
-            .get_or_insert_with(Browser::new);
-        browser.query = query.to_owned();
-        browser.filters = chosen.iter().copied().collect();
-        browser.search();
+            .browser = Some(Browser::new());
+    }
+    fn search(&self, query: &str, chosen: &[usize]) {
+        if let Some(b) = self
+            .seats()
+            .get_mut(&sunrise_hooks::seat())
+            .and_then(|s| s.browser.as_mut())
+        {
+            b.search(query, chosen);
+        }
     }
     fn fetch_icons(&self) {
         if let Some(b) = self
@@ -635,6 +643,7 @@ mod tests {
         fn filters(&self) -> &'static [&'static str] {
             &["a", "b"]
         }
+        fn open(&self) {}
         fn search(&self, _: &str, _: &[usize]) {
             self.searches.fetch_add(1, Ordering::Relaxed);
         }
@@ -725,6 +734,39 @@ mod tests {
                 "description overflows"
             );
         }
+    }
+
+    #[test]
+    fn a_registered_enabled_source_wins_over_the_built_in() {
+        static FAKE: Fake = Fake {
+            searches: AtomicUsize::new(0),
+            downloads: AtomicUsize::new(0),
+        };
+        let fake: &'static dyn Source = &FAKE;
+        let won = pick(&[fake]);
+        assert!(std::ptr::addr_eq(
+            won as *const dyn Source,
+            &FAKE as *const Fake
+        ));
+        let fallback = pick(&[]);
+        assert!(std::ptr::addr_eq(
+            fallback as *const dyn Source,
+            &*BUILTIN as *const Builtin
+        ));
+    }
+
+    #[test]
+    fn reopening_the_built_in_source_drops_a_busy_session() {
+        let b = &*BUILTIN;
+        b.open();
+        {
+            let mut seats = b.seats();
+            let seat = seats.get_mut(&sunrise_hooks::seat()).unwrap();
+            seat.browser.as_mut().unwrap().busy = true;
+        }
+        b.open();
+        let seats = b.seats();
+        assert!(!seats[&sunrise_hooks::seat()].browser.as_ref().unwrap().busy);
     }
 
     #[test]
