@@ -1189,8 +1189,8 @@ mod tests {
             id: "sunrise",
             name: "Sunrise",
             version: "1.2.3",
-            authors: "Ludovic Marie and the Horizon contributors",
-            license: "MIT",
+            authors: "The Sunrise contributors",
+            license: "PolyForm Shield 1.0.0",
             license_url: Some("https://example.org/LICENSE"),
             homepage: Some("https://example.org"),
             issues: Some("https://example.org/issues"),
@@ -1221,7 +1221,7 @@ mod tests {
             (row.id.as_str(), row.name.as_str(), row.version.as_str()),
             ("sunrise", "Sunrise", "1.2.3")
         );
-        assert_eq!(row.license, "MIT");
+        assert_eq!(row.license, "PolyForm Shield 1.0.0");
         assert_eq!(row.homepage.as_deref(), Some("https://example.org"));
         assert_eq!(row.issues.as_deref(), Some("https://example.org/issues"));
     }
