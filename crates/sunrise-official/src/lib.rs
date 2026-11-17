@@ -85,3 +85,24 @@ pub fn register() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_about_row_is_the_shipped_sunrise_row() {
+        let expected = About {
+            id: "sunrise",
+            name: "Sunrise",
+            version: hooks::VERSION,
+            authors: "Ludovic Marie and the Horizon contributors",
+            license: "MIT",
+            license_url: Some("https://github.com/sunrise-org/sunrise/blob/main/LICENSE"),
+            homepage: Some("https://playsunrise.net"),
+            issues: Some("https://github.com/sunrise-org/sunrise/issues"),
+            description: "sunrise.mods.screen.sunrise.description",
+        };
+        assert_eq!(AboutRow.about(), Some(expected));
+    }
+}

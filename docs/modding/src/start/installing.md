@@ -41,7 +41,7 @@ Benchmarks (`--benchmark`) never load mods.
 
 ## The Mods screen
 
-The **Mods** button on the title screen (also **Options > Mods**) lists Minecraft and Sunrise first, then each
+The **Mods** button on the title screen (also **Options > Mods**) lists Minecraft first (and Sunrise, in the official game with its Sunrise layer on), then each
 installed mod with its icon, name and version. Search the list and sort it A–Z or Z–A. Select a mod to read its
 id, version, license, authors, credits and description:
 
