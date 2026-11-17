@@ -22,30 +22,7 @@ const API: &str = "https://api.modrinth.com/v2";
 /// 100.
 pub const LIMIT: usize = 20;
 
-/// One search hit, as much of it as the list draws.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Hit {
-    pub id: String,
-    pub title: String,
-    pub author: String,
-    pub description: String,
-    pub downloads: u64,
-    /// Modrinth's icon for the project, empty when it has none.
-    pub icon_url: String,
-}
-
-/// What the worker sends back.
-#[derive(Debug)]
-pub enum Message {
-    Results(Vec<Hit>),
-    /// A project's icon, as the PNG bytes Modrinth served.
-    Icon(String, Vec<u8>),
-    /// A pack landed in the packs folder under this file name.
-    Downloaded(String),
-    /// A technical reason in English: the screen shows it inside
-    /// `sunrise.pack.addFailed`.
-    Failed(String),
-}
+pub use sunrise_hooks::packs::{Hit, Message};
 
 /// The filters the sidebar offers: the label's translation key, and the
 /// Modrinth facet it adds. Facets of one group are OR-ed, groups AND-ed, so
@@ -332,6 +309,7 @@ impl Browser {
                 self.status = Some(reason.clone());
                 self.installing = None;
             }
+            _ => {}
         }
         Some(message)
     }

@@ -1809,8 +1809,6 @@ pub struct OptionsUi {
     pub mods_note: Option<String>,
     /// The Mods screen (`Page::Mods`), made when the page opens.
     pub mods_screen: Option<crate::mods_screen::ModsScreen>,
-    /// Sunrise's `packBrowser` extra: the pack screen's Add button.
-    pub pack_browser: bool,
     /// Packs: the packs found and the selection the screen opens with.
     pub pack_infos: Vec<crate::pack_screen::PackInfo>,
     pub pack_selection: Vec<String>,
@@ -1931,7 +1929,6 @@ impl Default for OptionsUi {
             mod_project: String::new(),
             mods_note: None,
             mods_screen: None,
-            pack_browser: false,
             pack_infos: Vec::new(),
             pack_selection: Vec::new(),
             pack_screen: None,
@@ -3846,7 +3843,7 @@ impl OptionsUi {
                     self.pack_infos.clone(),
                     &self.pack_selection,
                 );
-                screen.browsing_allowed = self.pack_browser;
+                screen.browsing_allowed = crate::pack_source_ui::available();
                 screen.changed = std::mem::take(&mut self.pack_reselected);
                 self.pack_screen = Some(screen);
             }

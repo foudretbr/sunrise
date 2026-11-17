@@ -109,6 +109,7 @@ pub mod pack_hooks;
 pub mod pack_options_ui;
 pub mod pack_palette;
 pub mod pack_screen;
+pub mod pack_source_ui;
 pub mod pack_tags;
 pub mod packs;
 pub mod pad_cursor;
