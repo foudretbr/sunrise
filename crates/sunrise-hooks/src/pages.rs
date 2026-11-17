@@ -60,8 +60,7 @@ pub enum Row {
     Heading(&'static str),
     /// A line of grey text: a value such as a path, shown as it is.
     Note(String),
-    /// `<label>: ON` or `OFF`; a press flips it ([`Row::toggle`]). An inactive one is drawn greyed,
-    /// never pressed and skipped by controller focus.
+    /// `<label>: ON` or `OFF`; a press flips it ([`Row::toggle`]); inactive is greyed.
     #[non_exhaustive]
     Toggle {
         label: &'static str,
@@ -98,9 +97,7 @@ pub enum Row {
     },
     /// Empty space, in GUI pixels, on a page drawn as its own screen; nothing elsewhere.
     Space(u8),
-    /// A key binding, as Key Binds shows one: `key` is its key name (`key.keyboard.z`,
-    /// `key.mouse.left`). A press waits for the next key or mouse button ([`Act::Bind`]). An
-    /// inactive one ([`Row::key`]) is drawn greyed, never pressed and skipped by controller focus.
+    /// A key binding as Key Binds shows one, `key` its key name; a press sends [`Act::Bind`].
     #[non_exhaustive]
     Key {
         label: &'static str,

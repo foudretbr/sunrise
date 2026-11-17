@@ -93,8 +93,7 @@ pub mod hud {
     pub use sunrise_hooks::hud::{Canvas, Corner, Layer, register};
 }
 
-/// What the engine draws differently for a crate above, per player (docs/layers.md, "Look"). Not
-/// [`hooks::Look`], which is the players' look (`sunrise_hooks::players::Look`).
+/// What the engine draws differently, per player; not [`hooks::Look`] (players::Look).
 pub mod look {
     pub use sunrise_hooks::look::{Chat, Look, update};
 }

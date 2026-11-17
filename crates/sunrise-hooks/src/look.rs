@@ -1,5 +1,4 @@
-//! The look (docs/layers.md, "Look"): per-player visual knobs a crate sets and the engine reads
-//! where it draws. Nothing is registered; a seat nothing changed sees vanilla's.
+//! Per-seat visual knobs a crate sets and the engine reads (docs/layers.md, "Look").
 use crate::seat;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
@@ -27,8 +26,7 @@ pub struct Chat {
 static LOOKS: Mutex<Vec<Look>> = Mutex::new(Vec::new());
 static GENERATION: AtomicU64 = AtomicU64::new(0);
 
-/// Changes the current player's look ([`crate::seat`]); several crates share it, each keeping to
-/// its own fields.
+/// Changes the current seat's look ([`crate::seat`]); crates share it, each keeping to its fields.
 pub fn update(change: impl FnOnce(&mut Look)) {
     let seat = seat();
     let mut looks = LOOKS.lock().unwrap_or_else(PoisonError::into_inner);

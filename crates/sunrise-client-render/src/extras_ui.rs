@@ -576,6 +576,34 @@ mod tests {
                 .click(&mut s, at, SIZE, false, false, false)
                 .is_empty()
         );
+        let atlas = crate::hud::HudAtlas::build(
+            &crate::resource_source::ResourceSource::directory("/nonexistent".into()),
+        )
+        .unwrap();
+        let mut batch = crate::hud::HudBatch::scratch([1708, 960]);
+        shell.draw_test_frame(
+            &s,
+            &mut batch,
+            &atlas,
+            (0.0, 0.0),
+            false,
+            None,
+            &mut |_, _| {},
+        );
+        crate::widgets::end_frame(1);
+        let size = (batch.width, batch.height);
+        for _ in 0..60 {
+            shell.key(
+                &mut s,
+                winit::keyboard::KeyCode::ArrowDown,
+                None,
+                false,
+                size,
+            );
+            let at = shell.focused_row();
+            assert_ne!(at, Some(ExtraRow::Added(0, 0)));
+            assert_ne!(at, Some(ExtraRow::Added(0, 1)));
+        }
     }
 
     /// A click flips the switch, a Shift click steps the number back, the wheel steps it, and the
