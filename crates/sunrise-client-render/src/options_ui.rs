@@ -5392,9 +5392,9 @@ mod tests {
             vec![Event::ButtonClick, Event::OpenModFolder]
         );
         // Config does nothing until a native mod with settings is picked from the list
-        // (Minecraft, Sunrise, then Trails).
+        // (Minecraft, then Trails: no about hook is registered in this test).
         assert!(click(&mut ui, &mut s, 397.0, 192.0).is_empty());
-        assert!(click(&mut ui, &mut s, 61.0, 104.0).is_empty());
+        assert!(click(&mut ui, &mut s, 61.0, 76.0).is_empty());
         let events = click(&mut ui, &mut s, 397.0, 192.0);
         // Its labels were made with the list, maybe in another language.
         assert_eq!(events, vec![Event::ButtonClick, Event::NativeSettings(0)]);

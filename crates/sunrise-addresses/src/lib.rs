@@ -9,6 +9,15 @@
 /// files sends the player there.
 pub const WEBSITE: &str = "https://playsunrise.net";
 
+/// Sunrise's source repository, which the Mods screen's Sunrise row links.
+pub const REPOSITORY: &str = "https://github.com/sunrise-org/sunrise";
+
+/// The repository's licence file, linked from the Mods screen's Sunrise row.
+pub const LICENSE: &str = "https://github.com/sunrise-org/sunrise/blob/main/LICENSE";
+
+/// The repository's issue tracker, linked from the Mods screen's Sunrise row.
+pub const ISSUES: &str = "https://github.com/sunrise-org/sunrise/issues";
+
 /// The players' page on connecting an AI agent (the website's docs/agents.md).
 pub const AGENT_DOCS: &str = "https://playsunrise.net/docs/agents";
 

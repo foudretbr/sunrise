@@ -8,11 +8,11 @@
 //! [`register`] adds them. Nothing here depends on an engine crate.
 #![forbid(unsafe_code)]
 
-use sunrise_platform::hooks::{self, GetTheGame, Hooks};
+use sunrise_platform::hooks::{self, About, GetTheGame, Hooks};
 use sunrise_platform::{pages, settings};
 
 /// Every Sunrise part in the game, in the order its hooks run.
-const PARTS: [&dyn Hooks; 5] = [
+const PARTS: [&dyn Hooks; 6] = [
     // The anonymous "I'm playing" ping.
     &sunrise_heartbeat::HOOKS,
     // Play with Friends: `friend:` addresses join through its tunnel.
@@ -23,6 +23,8 @@ const PARTS: [&dyn Hooks; 5] = [
     &sunrise_discord::HOOKS,
     // Open and Share for saved performance captures.
     &sunrise_perf_share::HOOKS,
+    // The Mods screen's Sunrise row.
+    &ABOUT,
 ];
 /// The game started by hand without its prepared files: start it from the launcher, downloaded
 /// from Sunrise's website.
@@ -41,6 +43,27 @@ impl Hooks for LauncherPage {
                 "sunrise.get_the_game.download",
             ],
             button: "sunrise.get_the_game.button",
+        })
+    }
+}
+
+/// The Mods screen's Sunrise row.
+static ABOUT: AboutRow = AboutRow;
+
+struct AboutRow;
+
+impl Hooks for AboutRow {
+    fn about(&self) -> Option<About> {
+        Some(About {
+            id: "sunrise",
+            name: "Sunrise",
+            version: hooks::VERSION,
+            authors: "Ludovic Marie and the Horizon contributors",
+            license: "MIT",
+            license_url: Some(sunrise_addresses::LICENSE),
+            homepage: Some(sunrise_addresses::WEBSITE),
+            issues: Some(sunrise_addresses::ISSUES),
+            description: "sunrise.mods.screen.sunrise.description",
         })
     }
 }

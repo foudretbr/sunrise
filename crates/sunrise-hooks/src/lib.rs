@@ -110,6 +110,26 @@ pub trait Hooks: Sync {
     fn get_the_game(&self) -> Option<GetTheGame> {
         None
     }
+
+    /// The row the Mods screen lists after Minecraft for the game's own layer: its name, version
+    /// and links. The first hook that answers is used; with none, the screen lists no such row.
+    fn about(&self) -> Option<About> {
+        None
+    }
+}
+
+/// What [`Hooks::about`] answers. The description is a translation key of the game's own strings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct About {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub version: &'static str,
+    pub authors: &'static str,
+    pub license: &'static str,
+    pub license_url: Option<&'static str>,
+    pub homepage: Option<&'static str>,
+    pub issues: Option<&'static str>,
+    pub description: &'static str,
 }
 
 /// What [`Hooks::get_the_game`] answers. The texts are translation keys of the game's own strings
@@ -374,6 +394,11 @@ pub mod engine {
     pub fn get_the_game() -> Option<GetTheGame> {
         all().iter().find_map(|hooks| hooks.get_the_game())
     }
+
+    /// [`Hooks::about`]: the first registered hook's answer.
+    pub fn about() -> Option<About> {
+        all().iter().find_map(|hooks| hooks.about())
+    }
 }
 
 #[cfg(test)]
@@ -401,6 +426,19 @@ mod tests {
         }
         fn activity(&self, now: Activity) {
             self.0.lock().unwrap().push(format!("{now:?}"));
+        }
+        fn about(&self) -> Option<About> {
+            Some(About {
+                id: "recorder",
+                name: "Recorder",
+                version: "1",
+                authors: "a",
+                license: "MIT",
+                license_url: None,
+                homepage: Some("https://example.org"),
+                issues: None,
+                description: "recorder.about",
+            })
         }
         fn get_the_game(&self) -> Option<GetTheGame> {
             Some(GetTheGame {
@@ -600,6 +638,7 @@ mod tests {
         }
         engine::shutdown();
         assert!(engine::any());
+        assert_eq!(engine::about().map(|a| a.name), Some("Recorder"));
         assert_eq!(
             engine::get_the_game().map(|g| g.address),
             Some("https://example.org")
