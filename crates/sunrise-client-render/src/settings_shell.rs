@@ -616,35 +616,43 @@ fn lit(batch: &mut HudBatch, atlas: &HudAtlas, [x, y, w, _]: [f32; 4]) {
 }
 
 /// A value to read ([`Value::Read`]) at `y`: its name, and the value at the right, cut short to
-/// fit. `(label, name, value)`; `(hover, focused)`.
+/// fit; greyed, and no controller target, when it isn't `live`. `(label, name, value)`;
+/// `(hover, focused, live)`.
 fn read_row(
     batch: &mut HudBatch,
     atlas: &HudAtlas,
     cols: &Columns,
     y: f32,
     (label, name, value): (&str, &str, &str),
-    (hover, focused): (bool, bool),
+    (hover, focused, live): (bool, bool, bool),
 ) {
     let rect = cols.row(y);
-    crate::widgets::record(label, rect, true);
+    crate::widgets::record(label, rect, live);
     crate::widgets::narratable(|| {
-        crate::widgets::Narratable::button(label.to_owned(), rect, true)
+        crate::widgets::Narratable::button(label.to_owned(), rect, live)
             .hovered(hover)
             .focused(focused)
     });
-    crate::widgets::target(rect);
-    if hover || focused {
+    if live {
+        crate::widgets::target(rect);
+    }
+    if live && (hover || focused) {
         lit(batch, atlas, rect);
     }
     let ty = y + ((style::ROW - 8.0) / 2.0).floor();
     let left = rect[0] + style::INSET;
     let name_w = atlas.font.width(name);
     let shown = Text::literal(name.to_owned());
-    batch.text_styled(atlas, &shown, left, ty, style::WHITE, true);
+    let (color, soft) = if live {
+        (style::WHITE, style::soft())
+    } else {
+        (style::muted(), style::muted())
+    };
+    batch.text_styled(atlas, &shown, left, ty, color, true);
     let room = rect[2] - 2.0 * style::INSET - name_w - 8.0;
     let value = style::fit(atlas, value, room);
     let vx = rect[0] + rect[2] - style::INSET - atlas.font.width(&value);
-    batch.text_styled(atlas, &Text::literal(value), vx, ty, style::soft(), true);
+    batch.text_styled(atlas, &Text::literal(value), vx, ty, soft, true);
     if focused {
         style::ring(
             batch,
@@ -2206,7 +2214,7 @@ impl<S: Screen> Shell<S> {
         let hint = self.strip_text(row);
         if let Value::Read(value) = &row.value {
             let view = (label.as_str(), row.name.as_str(), value.as_str());
-            read_row(batch, atlas, cols, y, view, (hover, focused));
+            read_row(batch, atlas, cols, y, view, (hover, focused, row.live));
             crate::widgets::last_narratable(|n| n.hint = Some(hint.clone()));
             return;
         }

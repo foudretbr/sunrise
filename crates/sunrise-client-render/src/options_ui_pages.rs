@@ -262,11 +262,47 @@ impl OptionsUi {
         }
     }
 
-    pub(super) fn bind_page_key(&mut self, value: String) -> Vec<Event> {
-        let (i, k) = self.selected_page_key.take().unwrap_or_default();
-        if let Some(page) = registered().get(i) {
-            page.act(k, added::Act::Bind(value));
+    /// The open registered page's rows changed since its layout was made (a row greyed, a value
+    /// moved): lay it out again, and end a key's wait when its row is no longer an active key.
+    pub(super) fn refresh_added_rows(&mut self) {
+        let Page::Added(i) = self.page() else {
+            return;
+        };
+        let Some(page) = registered().get(i) else {
+            return;
+        };
+        let mut rows = Vec::new();
+        page.rows(&mut rows);
+        if rows == self.added_seen {
+            return;
         }
+        if self.selected_key == Some(PAGE_KEY)
+            && let Some((waiting_page, k)) = self.selected_page_key
+            && waiting_page == i
+            && !matches!(rows.get(k), Some(added::Row::Key { active: true, .. }))
+        {
+            self.selected_key = None;
+            self.selected_page_key = None;
+        }
+        self.added_seen = rows;
+        self.relayout();
+    }
+
+    /// Binds the waiting key row, read again first: a row that went inactive or away while it
+    /// waited hears nothing.
+    pub(super) fn bind_page_key(&mut self, value: String) -> Vec<Event> {
+        let Some((i, k)) = self.selected_page_key.take() else {
+            return Vec::new();
+        };
+        let Some(page) = registered().get(i) else {
+            return Vec::new();
+        };
+        let mut rows = Vec::new();
+        page.rows(&mut rows);
+        if !matches!(rows.get(k), Some(added::Row::Key { active: true, .. })) {
+            return Vec::new();
+        }
+        page.act(k, added::Act::Bind(value));
         vec![Event::Changed]
     }
 }
@@ -558,5 +594,60 @@ mod tests {
         assert!(ui.page_act(0, 0, false).is_empty());
         assert!(ui.page_act(0, 1, false).is_empty());
         assert_eq!(ui.selected_page_key, None);
+    }
+
+    /// A key row whose greying the test controls, recording what it hears.
+    struct Fading {
+        active: Mutex<bool>,
+        heard: Mutex<Vec<String>>,
+    }
+    impl added::Page for Fading {
+        fn id(&self) -> &'static str {
+            "test.fading"
+        }
+        fn title(&self) -> &'static str {
+            "test.fading.title"
+        }
+        fn place(&self) -> added::Place {
+            added::Place::SunriseSettings
+        }
+        fn rows(&self, rows: &mut Vec<added::Row>) {
+            let active = *self.active.lock().unwrap();
+            rows.push(added::Row::key("test.fading.key", "key.keyboard.z").active(active));
+        }
+        fn act(&self, _: usize, act: added::Act) {
+            self.heard.lock().unwrap().push(format!("{act:?}"));
+        }
+    }
+
+    #[test]
+    fn a_key_row_greyed_while_it_waits_stops_waiting_and_is_never_bound() {
+        static FADING: Fading = Fading {
+            active: Mutex::new(true),
+            heard: Mutex::new(Vec::new()),
+        };
+        static FADING_PAGES: [&dyn added::Page; 1] = [&FADING];
+        TEST_PAGES.set(Some(&FADING_PAGES));
+        let mut ui = OptionsUi::default();
+        ui.stack.push(Page::Added(0));
+        ui.refresh_added_rows();
+        assert!(ui.page_act(0, 0, false).is_empty());
+        assert_eq!(ui.selected_page_key, Some((0, 0)), "the key waits");
+        *FADING.active.lock().unwrap() = false;
+        // A bind that lands before the page is laid out again still reaches nothing.
+        assert!(ui.bind_page_key("key.keyboard.x".into()).is_empty());
+        ui.selected_key = Some(PAGE_KEY);
+        ui.selected_page_key = Some((0, 0));
+        ui.refresh_added_rows();
+        assert_eq!((ui.selected_key, ui.selected_page_key), (None, None));
+        let rows = ui.added_rows(0);
+        let Row::Buttons(_, Some(change)) = &rows[0] else {
+            panic!("the key has a change button");
+        };
+        assert!(matches!(&change.kind, WKind::Button { active: false, .. }));
+        assert!(
+            FADING.heard.lock().unwrap().is_empty(),
+            "the greyed key heard nothing"
+        );
     }
 }

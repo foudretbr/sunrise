@@ -569,6 +569,8 @@ mod tests {
         }
         assert!(!steps(0, 0));
         let mut shell = Shell::<ExtrasScreen>::default();
+        // Only the greyed rows are listed, so they are on screen for the click, frame and keys.
+        shell.set_search("test.greyed");
         let at = shell.point_at(&s, SIZE, ExtraRow::Added(0, 0));
         let mut s = s;
         assert!(
@@ -576,6 +578,8 @@ mod tests {
                 .click(&mut s, at, SIZE, false, false, false)
                 .is_empty()
         );
+        let switch_at = shell.point_at(&s, SIZE, ExtraRow::Added(0, 0));
+        let key_at = shell.point_at(&s, SIZE, ExtraRow::Added(0, 1));
         let atlas = crate::hud::HudAtlas::build(
             &crate::resource_source::ResourceSource::directory("/nonexistent".into()),
         )
@@ -591,6 +595,25 @@ mod tests {
             &mut |_, _| {},
         );
         crate::widgets::end_frame(1);
+        let greyed: Vec<_> = crate::widgets::last_labelled()
+            .into_iter()
+            .filter(|w| w.label.contains("test.greyed"))
+            .collect();
+        assert_eq!(greyed.len(), 2, "both rows are drawn: {greyed:?}");
+        assert!(
+            greyed.iter().all(|w| !w.enabled),
+            "drawn disabled: {greyed:?}"
+        );
+        let targets = crate::widgets::last_targets();
+        for (x, y) in [switch_at, key_at] {
+            assert!(
+                !targets.iter().any(|t| {
+                    let [tx, ty, tw, th] = t.rect;
+                    x >= tx && x < tx + tw && y >= ty && y < ty + th
+                }),
+                "no controller target at ({x}, {y})"
+            );
+        }
         let size = (batch.width, batch.height);
         for _ in 0..60 {
             shell.key(
