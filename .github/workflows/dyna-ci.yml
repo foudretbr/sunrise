@@ -821,6 +821,10 @@ jobs:
         id: the_launcher_builds_from_its_own_files
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: python3 tools/ci/check_launcher_standalone.py
+      - name: The vanilla build reuses the default build's dependencies
+        id: extras_features
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && runner.os == 'Linux' && needs.changes.outputs.rust_required != 'false' }}
+        run: python3 tools/ci/check_extras_features.py
       # The unit tier: a test that boots the game is #[ignore = "daily"]; the fixtures are in tools/ci/game-boot-fixtures.txt.
       - name: Game-boot tests are daily tests
         id: game_boot_tests_are_daily_tests

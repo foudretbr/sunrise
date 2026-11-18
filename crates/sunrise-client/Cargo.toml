@@ -67,6 +67,12 @@ bytemuck = { version = "1.24", features = ["derive"] }
 glam = "0.30"
 png = "0.18"
 sha2 = "0.10.9"
+# Match shared feature sets across Extras variants so CI builds the second incrementally; verify-static checks this.
+cipher = { version = "0.4", default-features = false, features = ["zeroize"] }
+crypto-common = { version = "0.1", default-features = false, features = ["getrandom"] }
+digest = { version = "0.10", default-features = false, features = ["mac"] }
+fnv = "1"
+socket2 = { version = "0.6", default-features = false, features = ["all"] }
 # Server resource packs are checked and cached by their SHA-1, as vanilla does.
 sha1 = "0.10"
 serde = { version = "1", features = ["derive"] }
@@ -124,6 +130,10 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 # OpenGL (WGL on Windows, EGL on Linux), the last fallback, for GPUs with no Vulkan or
 # DirectX 12 driver (`graphicsApi`, graphics.rs).
 wgpu = { version = "30.0.1", default-features = false, features = ["gles"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Controllers' gilrs turns this on through nix on Linux: pinned like the shared features above.
+libc = { version = "0.2", features = ["extra_traits"] }
 
 [features]
 default = ["audio", "controllers", "sunrise-extras"]
