@@ -95,17 +95,17 @@ impl Entry {
             ..Self::default()
         }
     }
-    fn from_about(about: &sunrise_hooks::About) -> Self {
+    fn from_row(row: &sunrise_hooks::mod_rows::Row) -> Self {
         Self {
-            id: about.id.into(),
-            name: about.name.into(),
-            version: about.version.into(),
-            authors: about.authors.into(),
-            license: about.license.into(),
-            license_url: about.license_url.map(Into::into),
-            homepage: about.homepage.map(Into::into),
-            issues: about.issues.map(Into::into),
-            description: crate::lang::get(about.description),
+            id: row.id.into(),
+            name: row.name.into(),
+            version: row.version.into(),
+            authors: crate::lang::get(row.authors),
+            license: row.license.into(),
+            license_url: row.license_url.map(Into::into),
+            homepage: row.homepage.map(Into::into),
+            issues: row.issues.map(Into::into),
+            description: crate::lang::get(row.description),
             ..Self::default()
         }
     }
@@ -259,27 +259,22 @@ pub struct ModsScreen {
 }
 
 impl ModsScreen {
-    /// `ModListScreen.init`: Minecraft, the about hook's row if any, then the installed mods.
+    /// `ModListScreen.init`: Minecraft, the registered rows, then the installed mods.
     pub fn new(width: i32, height: i32, in_world: bool, mods: &ModList) -> Self {
-        Self::with_about(
-            width,
-            height,
-            in_world,
-            mods,
-            sunrise_hooks::engine::about(),
-        )
+        let rows = sunrise_hooks::mod_rows::engine::all();
+        Self::with_rows(width, height, in_world, mods, rows)
     }
 
-    fn with_about(
+    fn with_rows(
         width: i32,
         height: i32,
         in_world: bool,
         mods: &ModList,
-        about: Option<sunrise_hooks::About>,
+        rows: &[&sunrise_hooks::mod_rows::Row],
     ) -> Self {
         let mut icons = HashMap::new();
         let mut entries = vec![Entry::minecraft()];
-        entries.extend(about.as_ref().map(Entry::from_about));
+        entries.extend(rows.iter().map(|row| Entry::from_row(row)));
         for (index, installed) in mods.installed.iter().enumerate() {
             let info = mods.info.get(&installed.id);
             let key = format!("mod/{index}/icon");
@@ -1184,48 +1179,6 @@ mod tests {
         assert_eq!(pixels[(7 * 4) + 3], 255, "the cube's top point is drawn");
     }
 
-    fn sunrise_about() -> sunrise_hooks::About {
-        sunrise_hooks::About {
-            id: "sunrise",
-            name: "Sunrise",
-            version: "1.2.3",
-            authors: "The Sunrise contributors",
-            license: "PolyForm Shield 1.0.0",
-            license_url: Some("https://example.org/LICENSE"),
-            homepage: Some("https://example.org"),
-            issues: Some("https://example.org/issues"),
-            description: "sunrise.mods.screen.sunrise.description",
-        }
-    }
-    fn new_screen(width: i32, height: i32, in_world: bool, mods: &ModList) -> ModsScreen {
-        ModsScreen::with_about(width, height, in_world, mods, Some(sunrise_about()))
-    }
-
-    #[test]
-    fn without_an_about_hook_the_list_has_minecraft_and_the_mods_only() {
-        let screen = ModsScreen::with_about(
-            427,
-            240,
-            false,
-            &mods(&[installed("zoom", "Zoom", None)]),
-            None,
-        );
-        assert_eq!(names(&screen), ["Minecraft", "Zoom"]);
-    }
-
-    #[test]
-    fn the_about_hook_gives_the_second_row() {
-        let screen = new_screen(427, 240, false, &mods(&[]));
-        let row = &screen.entries[1];
-        assert_eq!(
-            (row.id.as_str(), row.name.as_str(), row.version.as_str()),
-            ("sunrise", "Sunrise", "1.2.3")
-        );
-        assert_eq!(row.license, "PolyForm Shield 1.0.0");
-        assert_eq!(row.homepage.as_deref(), Some("https://example.org"));
-        assert_eq!(row.issues.as_deref(), Some("https://example.org/issues"));
-    }
-
     fn atlas() -> HudAtlas {
         HudAtlas::build(&sunrise_assets::resource_source::ResourceSource::directory(
             std::path::PathBuf::from("/nonexistent/sunrise-test-assets"),
@@ -1274,13 +1227,14 @@ mod tests {
     fn the_list_has_the_built_in_entries_and_follows_the_search_and_the_sort() {
         let atlas = atlas();
         let m = Measure(&atlas.font);
-        let mut screen = new_screen(427, 240, false, &mods(&[installed("zoom", "Zoom", None)]));
-        assert_eq!(names(&screen), ["Minecraft", "Sunrise", "Zoom"]);
+        let mut screen =
+            ModsScreen::new(427, 240, false, &mods(&[installed("zoom", "Zoom", None)]));
+        assert_eq!(names(&screen), ["Minecraft", "Zoom"]);
         // The sort button reverses the order.
         let (action, sound) =
             screen.click(&m, centre(screen.geo().sort).0, centre(screen.geo().sort).1);
         assert_eq!((action, sound), (Action::None, true));
-        assert_eq!(names(&screen), ["Zoom", "Sunrise", "Minecraft"]);
+        assert_eq!(names(&screen), ["Zoom", "Minecraft"]);
         // The search keeps the names that contain it, in any case.
         let (x, y) = centre(screen.geo().search);
         screen.click(&m, x, y);
@@ -1297,7 +1251,7 @@ mod tests {
             screen.erase(&m, 1);
         }
         // Everything is listed again and the selection stays.
-        assert_eq!(names(&screen).len(), 3);
+        assert_eq!(names(&screen).len(), 2);
         assert_eq!(screen.current().map(|e| e.id.as_str()), Some("zoom"));
         // A search that drops the selected mod leaves nothing selected.
         screen.type_text(&m, "x");
@@ -1322,7 +1276,7 @@ mod tests {
             installed("zoom", "Zoom", Some(page)),
             installed("plain", "Plain", None),
         ]);
-        let mut screen = new_screen(427, 240, false, &list);
+        let mut screen = ModsScreen::new(427, 240, false, &list);
         let click_row = |screen: &mut ModsScreen, name: &str| {
             let g = screen.geo();
             let at = screen
@@ -1361,7 +1315,7 @@ mod tests {
     fn the_footer_asks_for_the_folder_and_the_way_back() {
         let atlas = atlas();
         let m = Measure(&atlas.font);
-        let mut screen = new_screen(427, 240, false, &ModList::default());
+        let mut screen = ModsScreen::new(427, 240, false, &ModList::default());
         let actions: Vec<_> = screen
             .geo()
             .footer
@@ -1378,7 +1332,11 @@ mod tests {
     /// below the footer separator's row (`height - 38`); narrow screens shrink both equally.
     #[test]
     fn the_footer_buttons_sit_at_fixed_rectangles() {
-        let footer = |w, h| new_screen(w, h, false, &ModList::default()).geo().footer;
+        let footer = |w, h| {
+            ModsScreen::new(w, h, false, &ModList::default())
+                .geo()
+                .footer
+        };
         assert_eq!(footer(427, 240), [[61, 213, 150, 20], [215, 213, 150, 20]]);
         // Too narrow for 150 px: (240 - 4) / 2 = 118 each, flush to the edges.
         assert_eq!(footer(240, 180), [[0, 153, 118, 20], [122, 153, 118, 20]]);
@@ -1388,7 +1346,8 @@ mod tests {
     fn a_click_on_the_id_or_the_version_copies_it() {
         let atlas = atlas();
         let m = Measure(&atlas.font);
-        let mut screen = new_screen(427, 240, false, &mods(&[installed("zoom", "Zoom", None)]));
+        let mut screen =
+            ModsScreen::new(427, 240, false, &mods(&[installed("zoom", "Zoom", None)]));
         let mut copied = Vec::new();
         screen.select(screen.entries.iter().position(|e| e.id == "zoom").unwrap());
         let g = screen.geo();
@@ -1410,20 +1369,58 @@ mod tests {
     }
 
     #[test]
+    fn every_registered_row_follows_minecraft_with_its_text_translated() {
+        let row = |id, name| sunrise_hooks::mod_rows::Row {
+            id,
+            name,
+            version: "1.2.3",
+            authors: "test.authors",
+            license: "PolyForm Shield 1.0.0",
+            license_url: Some("https://example.org/LICENSE"),
+            homepage: Some("https://example.org"),
+            issues: None,
+            description: "test.description",
+        };
+        let (first, second) = (row("first", "Alpha"), row("second", "Beta"));
+        let language = crate::lang::Language::of(
+            "en_us",
+            [
+                ("test.authors".to_owned(), "The Testers".to_owned()),
+                ("test.description".to_owned(), "A test row.".to_owned()),
+            ],
+        );
+        let (screen, _) = crate::lang::scoped(language, || {
+            ModsScreen::with_rows(427, 240, false, &ModList::default(), &[&first, &second])
+        });
+        let ids: Vec<_> = screen.entries.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["minecraft", "first", "second"]);
+        let entry = &screen.entries[1];
+        assert_eq!(
+            (entry.authors.as_str(), entry.description.as_str()),
+            ("The Testers", "A test row.")
+        );
+        assert_eq!(
+            (entry.version.as_str(), entry.license.as_str()),
+            ("1.2.3", "PolyForm Shield 1.0.0")
+        );
+        assert_eq!(entry.homepage.as_deref(), Some("https://example.org"));
+    }
+
+    #[test]
     fn the_arrow_keys_walk_the_list_and_scroll_it() {
         let list: Vec<_> = (0..20)
             .map(|i| installed(&format!("m{i:02}"), &format!("Mod {i:02}"), None))
             .collect();
-        let mut screen = new_screen(427, 240, false, &mods(&list));
+        let mut screen = ModsScreen::new(427, 240, false, &mods(&list));
         screen.step(1);
         assert_eq!(screen.current().map(|e| e.name.as_str()), Some("Minecraft"));
         for _ in 0..21 {
             screen.step(1);
         }
-        assert_eq!(screen.current().map(|e| e.name.as_str()), Some("Sunrise"));
+        assert_eq!(screen.current().map(|e| e.name.as_str()), Some("Mod 19"));
         assert!(screen.list.amount > 0.0);
         screen.step(1);
-        assert_eq!(screen.current().map(|e| e.name.as_str()), Some("Sunrise"));
+        assert_eq!(screen.current().map(|e| e.name.as_str()), Some("Mod 19"));
         screen.step(-30);
         assert_eq!(screen.current().map(|e| e.name.as_str()), Some("Minecraft"));
         assert_eq!(screen.list.amount, 0.0);
@@ -1433,7 +1430,7 @@ mod tests {
     fn a_stopped_or_unlisted_mod_says_so_in_its_panel() {
         let (mut broken, info) = installed("broken", "Broken", None);
         broken.problem = Some("Not loaded: boom".into());
-        let screen = new_screen(427, 240, false, &mods(&[(broken, info)]));
+        let screen = ModsScreen::new(427, 240, false, &mods(&[(broken, info)]));
         let note = screen
             .entries
             .iter()
@@ -1443,7 +1440,7 @@ mod tests {
         assert_eq!(note.as_deref(), Some("Not loaded: boom"));
         // Without a problem, a mod that is not on says that instead.
         let (idle, info) = installed("idle", "Idle", None);
-        let screen = new_screen(427, 240, false, &mods(&[(idle, info)]));
+        let screen = ModsScreen::new(427, 240, false, &mods(&[(idle, info)]));
         let idle = screen.entries.iter().find(|e| e.id == "idle").unwrap();
         assert!(idle.status.is_some());
     }
@@ -1455,7 +1452,8 @@ mod tests {
         info.warnings = vec![("test.warn.optional".into(), vec!["jei".into()])];
         let note = |language| {
             crate::lang::scoped(language, || {
-                let screen = new_screen(427, 240, false, &mods(&[(row.clone(), info.clone())]));
+                let screen =
+                    ModsScreen::new(427, 240, false, &mods(&[(row.clone(), info.clone())]));
                 let entry = screen.entries.iter().find(|e| e.id == "warns").unwrap();
                 entry.note.as_ref().map(Text::plain)
             })
@@ -1494,7 +1492,7 @@ mod tests {
                     ("test.first".into(), vec!["other".into()]),
                     ("test.second".into(), vec!["third".into()]),
                 ];
-                let screen = new_screen(427, 240, false, &mods(&[(row, info)]));
+                let screen = ModsScreen::new(427, 240, false, &mods(&[(row, info)]));
                 let entry = screen
                     .entries
                     .iter()
@@ -1534,7 +1532,7 @@ mod tests {
                     "test.long".into(),
                     vec!["A complete warning sentence. ".repeat(100)],
                 )];
-                let mut screen = new_screen(427, 240, false, &mods(&[(row, info)]));
+                let mut screen = ModsScreen::new(427, 240, false, &mods(&[(row, info)]));
                 screen.select(
                     screen
                         .entries
@@ -1583,7 +1581,7 @@ mod tests {
             "test.long".into(),
             vec!["An overflowing warning. ".repeat(100)],
         )];
-        let mut screen = new_screen(427, 100, false, &mods(&[(row, info)]));
+        let mut screen = ModsScreen::new(427, 100, false, &mods(&[(row, info)]));
         screen.select(0);
         screen.draw(&m, (0, 0), 0, 0);
         assert_eq!(screen.panel_pinned.get(), 0);
@@ -1596,7 +1594,7 @@ mod tests {
     fn the_info_panel_has_the_lists_background_and_separators() {
         let atlas = atlas();
         let m = Measure(&atlas.font);
-        let screen = new_screen(427, 240, false, &ModList::default());
+        let screen = ModsScreen::new(427, 240, false, &ModList::default());
         let [px, py, _, view] = screen.geo().panel;
         let draws = screen.draw(&m, (0, 0), 0, 0);
         let blit = |texture: &str, x: i32, y: i32, w: i32, h: i32| {
@@ -1634,7 +1632,7 @@ mod tests {
     fn the_panel_frame_is_drawn_under_the_list() {
         let atlas = atlas();
         let m = Measure(&atlas.font);
-        let screen = new_screen(427, 240, false, &ModList::default());
+        let screen = ModsScreen::new(427, 240, false, &ModList::default());
         let [px, _, _, _] = screen.geo().panel;
         let [lx, ..] = screen.geo().list;
         let draws = screen.draw(&m, (0, 0), 0, 0);

@@ -57,8 +57,6 @@ pub use sunrise_java_properties as java_properties;
 /// [`hooks::register`] it before the game starts (docs/layers.md, "How a Sunrise crate plugs
 /// in"). The engine's dispatch side is not part of the API.
 pub mod hooks {
-    /// The release's version, for [`About::version`].
-    pub use sunrise_core::release::VERSION;
     /// The players the game shows (`sunrise_hooks::players`): the views [`Hooks::frame`] and
     /// [`Hooks::tick`] get, the pose a crate lays over a player's body, what goes by their names,
     /// the crate's sprites, the camera, and what a crate draws on them.
@@ -68,8 +66,8 @@ pub mod hooks {
         PlayerModel, PlayerModels, Quad, SpriteStore, Sprites, View,
     };
     pub use sunrise_hooks::{
-        About, Activity, Client, Dimension, GameMode, GetTheGame, Hooks, Play, Started, TooLate,
-        perf, register, seat, tunnel,
+        Activity, Client, Dimension, GameMode, GetTheGame, Hooks, Play, Started, TooLate, perf,
+        register, seat, tunnel,
     };
 }
 
@@ -89,6 +87,14 @@ pub mod pages {
 pub mod lang {
     pub use sunrise_hooks::lang::{Files, register};
 }
+
+/// Rows a crate adds to the Mods screen, after Minecraft (docs/layers.md, "Platform registries").
+pub mod mod_rows {
+    pub use sunrise_hooks::mod_rows::{Row, register};
+}
+
+/// The game's own release: [`release::VERSION`] is what its Mods screen row shows.
+pub use sunrise_core::release;
 
 /// Drawing on the HUD (docs/layers.md, "Platform registries").
 pub mod hud {

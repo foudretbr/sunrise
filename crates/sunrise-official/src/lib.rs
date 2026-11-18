@@ -8,11 +8,11 @@
 //! [`register`] adds them. Nothing here depends on an engine crate.
 #![forbid(unsafe_code)]
 
-use sunrise_platform::hooks::{self, About, GetTheGame, Hooks};
-use sunrise_platform::{pages, settings};
+use sunrise_platform::hooks::{self, GetTheGame, Hooks};
+use sunrise_platform::{mod_rows, pages, release, settings};
 
 /// Every Sunrise part in the game, in the order its hooks run.
-const PARTS: [&dyn Hooks; 6] = [
+const PARTS: [&dyn Hooks; 5] = [
     // The anonymous "I'm playing" ping.
     &sunrise_heartbeat::HOOKS,
     // Play with Friends: `friend:` addresses join through its tunnel.
@@ -23,8 +23,6 @@ const PARTS: [&dyn Hooks; 6] = [
     &sunrise_discord::HOOKS,
     // Open and Share for saved performance captures.
     &sunrise_perf_share::HOOKS,
-    // The Mods screen's Sunrise row.
-    &ABOUT,
 ];
 /// The game started by hand without its prepared files: start it from the launcher, downloaded
 /// from Sunrise's website.
@@ -47,26 +45,18 @@ impl Hooks for LauncherPage {
     }
 }
 
-/// The Mods screen's Sunrise row.
-static ABOUT: AboutRow = AboutRow;
-
-struct AboutRow;
-
-impl Hooks for AboutRow {
-    fn about(&self) -> Option<About> {
-        Some(About {
-            id: "sunrise",
-            name: "Sunrise",
-            version: hooks::VERSION,
-            authors: "The Sunrise contributors",
-            license: "PolyForm Shield 1.0.0",
-            license_url: Some(sunrise_addresses::LICENSE),
-            homepage: Some(sunrise_addresses::WEBSITE),
-            issues: Some(sunrise_addresses::ISSUES),
-            description: "sunrise.mods.screen.sunrise.description",
-        })
-    }
-}
+/// Sunrise's row on the Mods screen, after Minecraft.
+static SUNRISE_ROW: mod_rows::Row = mod_rows::Row {
+    id: "sunrise",
+    name: "Sunrise",
+    version: release::VERSION,
+    authors: "sunrise.mods.screen.sunrise.authors",
+    license: "PolyForm Shield 1.0.0",
+    license_url: Some(sunrise_addresses::LICENSE),
+    homepage: Some(sunrise_addresses::WEBSITE),
+    issues: Some(sunrise_addresses::ISSUES),
+    description: "sunrise.mods.screen.sunrise.description",
+};
 
 /// Their settings, in the player's settings files.
 const STORES: [&dyn settings::Store; 1] = [&sunrise_discord::SETTING];
@@ -78,6 +68,7 @@ const PAGES: [&dyn pages::Page; 1] = [&sunrise_discord::SECTION];
 pub fn register() {
     let late = PARTS.into_iter().map(hooks::register);
     let late = late.chain(STORES.into_iter().map(settings::register));
+    let late = late.chain(std::iter::once(mod_rows::register(&SUNRISE_ROW)));
     for result in late.chain(PAGES.into_iter().map(pages::register)) {
         if let Err(e) = result {
             // The executable registered after starting the game: a bug, not a player's problem.
@@ -91,18 +82,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_about_row_is_the_shipped_sunrise_row() {
-        let expected = About {
-            id: "sunrise",
-            name: "Sunrise",
-            version: hooks::VERSION,
-            authors: "The Sunrise contributors",
-            license: "PolyForm Shield 1.0.0",
-            license_url: Some("https://github.com/sunrise-org/sunrise/blob/main/LICENSE"),
-            homepage: Some("https://playsunrise.net"),
-            issues: Some("https://github.com/sunrise-org/sunrise/issues"),
-            description: "sunrise.mods.screen.sunrise.description",
-        };
-        assert_eq!(AboutRow.about(), Some(expected));
+    fn the_sunrise_row_links_the_shipped_licence_site_and_issues() {
+        assert_eq!(
+            (
+                SUNRISE_ROW.license_url,
+                SUNRISE_ROW.homepage,
+                SUNRISE_ROW.issues
+            ),
+            (
+                Some("https://github.com/sunrise-org/sunrise/blob/main/LICENSE"),
+                Some("https://playsunrise.net"),
+                Some("https://github.com/sunrise-org/sunrise/issues")
+            )
+        );
     }
 }

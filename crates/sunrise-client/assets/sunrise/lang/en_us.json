@@ -587,6 +587,7 @@
   "sunrise.mods.screen.issues": "Issues",
   "sunrise.mods.screen.license": "License: %s",
   "sunrise.mods.screen.license.none": "All Rights Reserved",
+  "sunrise.mods.screen.sunrise.authors": "The Sunrise contributors",
   "sunrise.mods.screen.narration": "Mods",
   "sunrise.mods.screen.off": "Not loaded: turn it on in the launcher.",
   "sunrise.mods.screen.search": "Search",

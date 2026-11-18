@@ -555,6 +555,17 @@ sunrise_platform::lang::register(LANG)?;
   is kept in `tools/lang_review/<name>/<code>.json` ([translations.md](translations.md)).
 - With nothing registered, a language loads exactly as before.
 
+### Mods screen rows (`sunrise_platform::mod_rows`)
+
+A crate lists something the game ships that is not an installed mod on the Mods screen: a `&'static Row` of
+plain data (id, name, version, authors, licence and its link, homepage, issues, description). `authors` and
+`description` are translation keys; the rest are proper names, versions and addresses, shown as written.
+
+- The screen lists Minecraft, then every registered row in registration order, then the installed mods. No row
+  replaces another.
+- With nothing registered (the plain `sunrise-game` and `sunrise-client` executables), the screen lists Minecraft
+  and the mods only.
+
 ## Extras that may leave the game
 
 Sunrise's extras are Sunrise-layer code. Each one is a candidate to become an optional native mod that players add
