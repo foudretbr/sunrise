@@ -46,7 +46,7 @@ class MixinsScratchTests(unittest.TestCase):
                 with patch.dict(os.environ, exports), patch.object(builder, "stage", side_effect=RuntimeError("stage boundary")) as stage:
                     with self.assertRaisesRegex(RuntimeError, "stage boundary"):
                         builder.build(Path(exports["SDK_OUT"]), False)
-                    stage.assert_called_once_with(Path(exports["CARGO_TARGET_DIR"]) / "prebuilt")
+                    stage.assert_called_once_with(Path(exports["CARGO_TARGET_DIR"]) / "prebuilt", sdk_dylibs=True)
                 subprocess.run(["bash", "-eu", "-c", cleanup], env=dict(original, **exports), check=True)
                 self.assertFalse(scratch.exists())
             self.assertEqual(len(set(allocated)), 2)

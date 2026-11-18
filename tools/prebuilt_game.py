@@ -155,31 +155,88 @@ def head() -> str:
     return run(["git", "rev-parse", "HEAD"], cwd=ROOT).strip()
 
 
-def stage(target_dir: Path, stage_tool: Path | None = None) -> Path:
-    """A copy of HEAD's tracked source with the staging pass run over it (#589): every point method gets its
-    `#[point]`, internals become public, and the build data is written with HEAD's commit in its header.
-    The copy is the commit's own bytes ([`tracked_blobs`]), never the working tree's, which is never rewritten."""
+def sync_stage(source: Path, destination: Path) -> None:
+    """Mirror the new tree without touching identical files: Cargo uses mtimes for path crate freshness."""
+    if destination.is_symlink():
+        destination.unlink()
+    destination.mkdir(exist_ok=True)
+    entries = {path.name: path for path in source.iterdir()}
+    for path in destination.iterdir():
+        incoming = entries.get(path.name)
+        if path.is_symlink():
+            path.unlink()
+        elif incoming is None or path.is_dir() != incoming.is_dir():
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+    for path in entries.values():
+        dest = destination / path.name
+        if path.is_dir():
+            sync_stage(path, dest)
+        else:
+            data = path.read_bytes()
+            if not dest.exists() or dest.read_bytes() != data:
+                dest.write_bytes(data)
+
+
+def stage(target_dir: Path, stage_tool: Path | None = None, *, sdk_dylibs: bool = False) -> Path:
+    """Stage HEAD's tracked bytes, never the working tree's. Run the staging pass (#589) on a fresh copy so
+    it can edit the source and emit build data, then sync the result. SDK builds also stage dylib manifests."""
     setup_started = time.monotonic()
+    target_dir.mkdir(parents=True, exist_ok=True)
     staged = target_dir / "stage"
-    if staged.exists():
-        shutil.rmtree(staged)
     commit = head()
-    for name, data in tracked_blobs(ROOT, commit):
-        (staged / name).parent.mkdir(parents=True, exist_ok=True)
-        (staged / name).write_bytes(data)
-    arguments = [str(staged), str(staged / POINTS), str(staged / INTERNALS), commit]
-    command = ([str(stage_tool.resolve())] if stage_tool is not None else
-               ["cargo", "run", "--locked", "--release", "-q", "-p", "sunrise-mod-api-gen", "--bin", "sunrise-stage", "--"])
-    print(f"stage_phase=copy_setup seconds={time.monotonic() - setup_started:.3f}", flush=True)
-    started = time.monotonic()
-    print(run(command + arguments, cwd=staged,
-              env=None if stage_tool is not None else
-              {**os.environ, "CARGO_TARGET_DIR": str(target_dir / "tools")}), end="")
-    label = "Stage binary execution" if stage_tool is not None else "Stage release build and execution"
-    print(f"{label}: {time.monotonic() - started:.3f}s (source copy/setup excluded)", flush=True)
-    # Only the prebuilt game splits the wasm runtime out: normal source builds stay static. With
-    # prefer-dynamic, rustc picks this dylib for the game rather than folding its runtime stack into it.
+    with tempfile.TemporaryDirectory(prefix="next-", dir=target_dir) as scratch:
+        scratch = Path(scratch)
+        for name, data in tracked_blobs(ROOT, commit):
+            path = scratch / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        arguments = [str(scratch), str(scratch / POINTS), str(scratch / INTERNALS), commit]
+        if stage_tool is None:
+            # Build the tool from a stable copy of the unmodified commit, not the disposable rewrite tree.
+            source = target_dir / "stage-in"
+            sync_stage(scratch, source)
+            command = ["cargo", "run", "--locked", "--release", "-q", "-p", "sunrise-mod-api-gen",
+                       "--bin", "sunrise-stage", "--"]
+            env = {**os.environ, "CARGO_TARGET_DIR": str(target_dir / "tools")}
+            label = "Stage release build and execution"
+        else:
+            source = scratch
+            command = [str(stage_tool.resolve())]
+            env = None
+            label = "Stage binary execution"
+        print(f"stage_phase=copy_setup seconds={time.monotonic() - setup_started:.3f}", flush=True)
+        started = time.monotonic()
+        print(run(command + arguments, cwd=source, env=env), end="")
+        print(f"{label}: {time.monotonic() - started:.3f}s (source copy/setup excluded)", flush=True)
+
+        if sdk_dylibs:
+            prepare_sdk_manifests(scratch)
+        sync_stage(scratch, staged)
     return staged
+
+
+def prepare_sdk_manifests(staged: Path) -> None:
+    """Split the API libraries and the wasm runtime out of the prebuilt game: with prefer-dynamic, rustc
+    picks the dylibs rather than folding them into the game."""
+    metadata = json.loads(run(["cargo", "metadata", "--format-version", "1"], cwd=staged))
+    closure = api_closure(metadata)
+    for package in metadata["packages"]:
+        if package["id"] not in closure and package["name"] != "sunrise-mod-wasm":
+            continue
+        if not any(target["kind"] == ["lib"] for target in package["targets"]):
+            continue
+        manifest = Path(package["manifest_path"])
+        if not manifest.is_relative_to(staged):
+            continue  # Registry dependencies are owned by Cargo, not rewritten.
+        text = manifest.read_text()
+        if "[lib]" in text:
+            text = text.replace("[lib]", '[lib]\ncrate-type = ["rlib", "dylib"]', 1)
+        else:
+            text += '\n[lib]\ncrate-type = ["rlib", "dylib"]\n'
+        manifest.write_text(text)
 
 
 def cargo_features(server: bool, platform: str) -> list[str]:
@@ -386,24 +443,8 @@ def build(out: Path, server: bool) -> None:
     layout = package_format(ROOT)
     # Resolved here: the staging and build steps run from the staged copy.
     target_dir = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve() / "prebuilt"
-    staged = stage(target_dir)
+    staged = stage(target_dir, sdk_dylibs=True)
     host = rustc_host()
-    metadata = json.loads(run(["cargo", "metadata", "--format-version", "1"], cwd=staged))
-    closure = api_closure(metadata)
-    for package in metadata["packages"]:
-        if package["id"] not in closure and package["name"] != "sunrise-mod-wasm":
-            continue
-        if not any(target["kind"] == ["lib"] for target in package["targets"]):
-            continue
-        manifest = Path(package["manifest_path"])
-        if not manifest.is_relative_to(staged):
-            continue  # Registry dependencies are owned by Cargo, not rewritten.
-        text = manifest.read_text()
-        if "[lib]" in text:
-            text = text.replace("[lib]", '[lib]\ncrate-type = ["rlib", "dylib"]', 1)
-        else:
-            text += '\n[lib]\ncrate-type = ["rlib", "dylib"]\n'
-        manifest.write_text(text)
 
     # One std for the game, every mod and the executable: the game links std dynamically, as mods will.
     rustflags = "-C prefer-dynamic --emit=metadata"
