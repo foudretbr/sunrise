@@ -35,7 +35,7 @@ const ITEMS: &[(&str, &[&str])] = &[
 ];
 
 /// The protocol number the pinned text belongs to, and the hash of that text.
-const PINNED: (u32, &str) = (1, "b0d7cdc52dc42a3dc8c5b628490835e3");
+const PINNED: (u32, &str) = (1, "362cc2f287f3e3279241e2643e6d24ca");
 
 fn find(items: &[Item], name: &str, out: &mut Vec<String>) {
     for item in items {
