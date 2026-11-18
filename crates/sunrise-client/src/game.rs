@@ -1089,6 +1089,8 @@ struct Game<'a> {
     left: bool,
     right: bool,
     cursor: (f32, f32),
+    /// The window pointer and the GUI scale last used to project it into `cursor`.
+    window_cursor: Option<(winit::dpi::PhysicalPosition<f64>, f32)>,
     /// The cursor icon the window shows (`widgets::take_cursor` each frame).
     cursor_icon: sunrise_client::widgets::Cursor,
     captured: bool,
@@ -4936,6 +4938,9 @@ impl Game<'_> {
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
         self.input_hud_begin();
         let mut batch = HudBatch::new(size, self.settings.gui_scale_inputs());
+        if self.native_screen_shown() {
+            self.reproject_window_cursor(batch.scale);
+        }
         batch.glint_colour = self.pvp_glint_texel();
         // GlobalSettingsUniform's GameTime, for a resource pack's text shader.
         batch.game_time = ((self.world.game_time.rem_euclid(24000)) as f32
@@ -9050,6 +9055,20 @@ fn autosave_interval(rate: f32) -> i64 {
 /// winit's events for a window's game, with any loop: a headless client (#4951) has no
 /// winit loop and calls these from its own.
 impl Game<'_> {
+    fn set_window_cursor(&mut self, position: winit::dpi::PhysicalPosition<f64>, scale: f32) {
+        self.cursor = (position.x as f32 / scale, position.y as f32 / scale);
+        self.window_cursor = Some((position, scale));
+    }
+
+    /// A resize or settings change can update the GUI scale without moving the mouse.
+    fn reproject_window_cursor(&mut self, scale: f32) {
+        if let Some((position, last_scale)) = self.window_cursor
+            && scale != last_scale
+        {
+            self.set_window_cursor(position, scale);
+        }
+    }
+
     /// One window event, in the order vanilla's `KeyboardHandler` and `MouseHandler` see it.
     ///
     /// A controller doesn't come through here in play: `pad_action` goes straight to the mappings
@@ -9186,13 +9205,25 @@ impl Game<'_> {
         ) {
             self.last_input = Instant::now();
         }
-        if !self.pad_synthetic_input()
-            && matches!(
-                event,
-                WindowEvent::MouseInput { .. } | WindowEvent::MouseWheel { .. }
-            )
-        {
-            self.reassert_pointer_capture();
+        if matches!(
+            event,
+            WindowEvent::MouseInput { .. } | WindowEvent::MouseWheel { .. }
+        ) {
+            if !self.pad_synthetic_input() {
+                self.reassert_pointer_capture();
+            }
+            // A click can arrive after a resize but before the first redraw at the new scale.
+            if self.native_screen_shown()
+                && let Some(r) = &self.renderer
+            {
+                let inputs = self.settings.gui_scale_inputs();
+                let gui = sunrise_client::window::GuiSize::new(
+                    [r.config.width, r.config.height],
+                    inputs.requested,
+                    inputs.unicode,
+                );
+                self.reproject_window_cursor(gui.scale as f32);
+            }
         }
         // The real mouse takes the pointer back from the keyboard's focus.
         self.key_focus_mouse(event_loop, &event);
@@ -9214,7 +9245,7 @@ impl Game<'_> {
                             [r.config.width, r.config.height],
                             self.settings.gui_scale_inputs(),
                         );
-                        self.cursor = (position.x as f32 / b.scale, position.y as f32 / b.scale);
+                        self.set_window_cursor(*position, b.scale);
                     }
                 }
                 WindowEvent::MouseInput {
@@ -9519,7 +9550,7 @@ impl Game<'_> {
                             self.settings.gui_scale_inputs(),
                         );
                         let previous = self.cursor;
-                        self.cursor = (position.x as f32 / b.scale, position.y as f32 / b.scale);
+                        self.set_window_cursor(position, b.scale);
                         if self.studio_mouse_dragged(b.width) {
                             return Ok(());
                         }
@@ -10765,6 +10796,7 @@ impl<'a> Game<'a> {
             left: false,
             right: false,
             cursor: (0.0, 0.0),
+            window_cursor: None,
             cursor_icon: sunrise_client::widgets::Cursor::Arrow,
             captured: false,
             capture_mode: None,

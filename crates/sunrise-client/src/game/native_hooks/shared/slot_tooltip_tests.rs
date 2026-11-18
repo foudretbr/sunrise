@@ -19,6 +19,10 @@ impl mod_api::BlockEntityPart for SlotTip {
     ) {
         // Player inventory slot 9 is menu slot 27 in a three-row chest.
         assert_eq!(event.slot, Some(27));
+        assert_eq!(event.gui_size, [512, 512]);
+        assert_eq!(event.origin, [168.0, 173.0]);
+        assert_eq!(event.pointer, [184, 265]);
+        assert_eq!(event.at, [16.0, 92.0]);
         assert!(
             event
                 .lines

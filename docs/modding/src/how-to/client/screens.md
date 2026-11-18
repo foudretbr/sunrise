@@ -40,9 +40,18 @@ the sign's block position and whether its front side is being edited. It returns
 editor open, or outside a world. A close of the sign editor always sends the sign update, however it
 closes; there is no close that skips it, because the vanilla client never omits that packet.
 
+## Frame coordinates
+
+`screen_draw` and `screen_tooltip` version 3 carry `pointer: [i32; 2]`
+and `gui_size: [i32; 2]`, the current frame's absolute pointer and window size
+in scaled GUI pixels. Pointer components truncate toward zero, including outside
+the panel. Both carry `origin: [f32; 2]`, the panel's top-left; tooltip `at`
+remains relative to that origin. Use these values for hover regions and layout:
+they reflect this frame's resize and panel positioning, not a cached window size.
+
 ## Replacing a mod container slot's tooltip
 
-`BlockEntityPart::screen_tooltip` version 2 runs for a hovered filled slot as well
+`BlockEntityPart::screen_tooltip` runs for a hovered filled slot as well
 as an empty slot or screen space. `event.slot` is the **menu index**, including
 the player inventory, or `None` outside a mapped slot. It is not the engine's
 internal slot encoding. `event.at` remains GUI pixels from the screen's origin.

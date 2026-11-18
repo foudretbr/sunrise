@@ -3150,7 +3150,19 @@ impl Game<'_> {
                 );
             }
         }
-        self.native_screen_draw(&s.block, s.pos(), &s.data, batch, [ox, oy]);
+        if mod_api::__private::has_scoped_hook(mod_api::HookId::ScreenDraw) {
+            let gui_size = [batch.width as i32, batch.height as i32];
+            let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch);
+            self.native_screen_draw(mod_api::__private::ScreenDrawCall {
+                block: &s.block,
+                pos: s.pos(),
+                data: &s.data,
+                origin: [ox, oy],
+                pointer: [self.cursor.0 as i32, self.cursor.1 as i32],
+                gui_size,
+                draw: &mut draw,
+            });
+        }
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         if s.screen.own_labels {
             return true;
@@ -3266,6 +3278,7 @@ impl Game<'_> {
         slot: Option<usize>,
         lines: &mut Vec<(sunrise_client::text::Text, u32)>,
     ) {
+        // Scoped hooks subscribe through Parts, not the global Hooks subscriber table.
         if !mod_api::__private::has_scoped_hook(mod_api::HookId::ScreenTooltip) {
             return;
         }
@@ -3277,7 +3290,25 @@ impl Game<'_> {
         });
         let (ox, oy) = self.inventory_origin(batch);
         let at = [self.cursor.0 - ox, self.cursor.1 - oy];
-        self.native_screen_tooltip(&screen.block, &screen.data, at, menu_slot, lines);
+        use crate::game::api_values::{TryIntoApi, TryIntoEngine};
+        // Keep the original tooltip if either conversion fails. A hovered
+        // item's text can fail on every frame, so do not log the refusal here.
+        let Ok(mut snapshot) = lines.try_into_api() else {
+            return;
+        };
+        self.native_screen_tooltip(mod_api::__private::ScreenTooltipCall {
+            block: &screen.block,
+            data: &screen.data,
+            at,
+            slot: menu_slot,
+            origin: [ox, oy],
+            pointer: [self.cursor.0 as i32, self.cursor.1 as i32],
+            gui_size: [batch.width as i32, batch.height as i32],
+            lines: &mut snapshot,
+        });
+        if let Ok(replacement) = snapshot.try_into_engine(&()) {
+            *lines = replacement;
+        }
     }
     /// Options > Mods' rows for loaded code mods, after the content-only rows.
     pub(super) fn list_native_mods(&mut self) {

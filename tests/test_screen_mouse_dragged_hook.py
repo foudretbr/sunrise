@@ -23,6 +23,7 @@ class ScreenMouseDraggedHookTests(unittest.TestCase):
         start = source.index("                        let previous = self.cursor;", source.index("WindowEvent::CursorMoved { position"))
         cursor_end = source.index("                        if self.dialog_open()", start)
         cursor = source[start:cursor_end]
+        set_cursor = method(source, "set_window_cursor").replace("winit::dpi::PhysicalPosition<f64>", "Point")
         # The extracted fixture only models the mouse-drag hook. Keep the
         # replay timeline's independent drag handler out of this focused slice.
         studio_drag = cursor.index("                        if self.studio_mouse_dragged(")
@@ -55,7 +56,7 @@ struct Point { x: f64, y: f64 }
 struct Batch { scale: f32 }
 enum WindowEvent { Focused(bool) }
 struct Game { drag_button: Option<i32>, physical_buttons: HashSet<i32>, physical_keys: HashSet<i32>,
-    cursor: (f32, f32), modifiers: ModifiersState, synthetic: bool, open: bool, cancel: bool, handled: usize, posts: usize,
+    cursor: (f32, f32), window_cursor: Option<(Point, f32)>, modifiers: ModifiersState, synthetic: bool, open: bool, cancel: bool, handled: usize, posts: usize,
     calls: RefCell<Vec<(i32, [f32; 2], (f32, f32))>> }
 impl Game {
     fn pad_synthetic_input(&self) -> bool { self.synthetic }
@@ -66,6 +67,7 @@ impl Game {
     }
     TRACK
     DISPATCH
+    POINTER_SETTER
     fn pointer(&mut self, position: Point) -> Result<(), ()> {
         let b = Batch { scale: 2.0 };
         let mut mouse_post = None;
@@ -79,7 +81,7 @@ impl Game {
 fn lifecycle_and_cancellation() {
     for cancel in [false, true] {
         let mut game = Game { drag_button: None, physical_buttons: HashSet::from([0, 1]),
-            physical_keys: HashSet::from([10]), cursor: (10.0, 10.0), modifiers: ModifiersState(5), synthetic: false,
+            physical_keys: HashSet::from([10]), cursor: (10.0, 10.0), window_cursor: None, modifiers: ModifiersState(5), synthetic: false,
             open: true, cancel, handled: 0, posts: 0, calls: RefCell::new(vec![]) };
         game.track_drag_button(0, true);
         game.track_drag_button(1, true);
@@ -114,7 +116,7 @@ fn lifecycle_and_cancellation() {
         assert!(game.calls.borrow().is_empty());
     }
 }
-""".replace("TRACK", track).replace("DISPATCH", dispatch).replace("CURSOR", cursor).replace("FOCUS", focus)
+""".replace("TRACK", track).replace("DISPATCH", dispatch).replace("CURSOR", cursor).replace("FOCUS", focus).replace("POINTER_SETTER", set_cursor)
         with tempfile.TemporaryDirectory() as folder:
             src, exe = Path(folder) / "drag.rs", Path(folder) / "drag.exe"
             src.write_text(fixture, encoding="utf-8")

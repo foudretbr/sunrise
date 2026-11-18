@@ -7,20 +7,33 @@ pub trait Hooks {
     /// labels, from the menu's data slots `data` (the block entity's `data`
     /// on the server): data slots are 16-bit on the wire as in vanilla (a
     /// bigger value wraps), and `data` is empty until the server's first
-    /// values arrive, so read it with `get`. Draw with `native_sprite`, `native_fill` and
-    /// `native_text`.
+    /// values arrive, so read it with `get`. Draw with `event.draw.sprite`,
+    /// `event.draw.fill` and `event.draw.text`.
     /// `pos` is the open menu's block position, as reported by the server
     /// (or the clicked block for a server without menu-extra support).
     /// It is `None` for a menu opened without a block position. Read the
     /// client level's current view at this position through the existing
     /// both-sided level reads; it is not an authoritative server snapshot.
+    ///
+    /// `pointer` is the frame's absolute integer pointer in scaled GUI pixels
+    /// (truncated toward zero); `gui_size` is that frame's scaled width and height.
+    /// `origin` is the panel's top-left in the same coordinates. The pointer may
+    /// be outside the panel; use these frame values rather than caching a size.
     #[hook(
-        version = 2,
+        version = 3,
         side = "client",
         contract = "listen",
         scope = "block_entity",
         key = "block",
         neoforge = "none (see screen)"
     )]
-    fn screen_draw();
+    fn screen_draw(
+        block: &str,
+        pos: Option<[i32; 3]>,
+        data: &[i32],
+        draw: &mut dyn DrawContext,
+        origin: [f32; 2],
+        pointer: [i32; 2],
+        gui_size: [i32; 2],
+    );
 }

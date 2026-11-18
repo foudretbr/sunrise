@@ -262,6 +262,10 @@ impl Game<'_> {
             scale,
         ) {
             self.cursor = pos;
+            self.window_cursor = Some((
+                winit::dpi::PhysicalPosition::new(centre.x - vx, centre.y - vy),
+                scale,
+            ));
         }
         if !self.internal_grab() {
             window.set_cursor_visible(!self.captured);

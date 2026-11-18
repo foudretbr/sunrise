@@ -146,6 +146,7 @@ struct Game {
     remote: Option<Remote>,
     studio: Studio, replay: Replay,
     mining: bool, lan_acting: Option<u32>, renderer: Option<Renderer>, cursor: (f32, f32),
+    window_cursor: Option<(PhysicalPosition<f64>, f32)>,
     server_packs: ServerPacks, command_prompt: Option<()>, options: Options, settings: Settings,
     unclaimed_window: bool, scripted: bool, focus_after_run: Option<bool>, applied_focus: Vec<bool>,
     unclaimed_modifiers: Option<u8>, applied_modifiers: Vec<u8>,
@@ -157,7 +158,7 @@ impl Default for Game {
             mouse: Mouse::default(), captured: false, capture_mode: None, regrab_on_refocus: false, title: None,
             screen: Screen::Playing, remote: None, studio: Studio::default(), replay: Replay::default(),
             mining: false, lan_acting: None,
-            renderer: None, cursor: (0.0, 0.0), server_packs: ServerPacks::default(),
+            renderer: None, cursor: (0.0, 0.0), window_cursor: None, server_packs: ServerPacks::default(),
             command_prompt: None, options: Options::default(), settings: Settings,
             unclaimed_window: false, scripted: false, focus_after_run: None, applied_focus: Vec::new(),
             unclaimed_modifiers: None, applied_modifiers: Vec::new() }

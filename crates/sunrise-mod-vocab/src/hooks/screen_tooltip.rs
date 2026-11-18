@@ -10,14 +10,28 @@ pub trait Hooks {
     /// Empty slots and screen space start empty. Images, style and the carried
     /// stack visibility rule are unchanged. Lines are rich Text/color pairs,
     /// so editing one line does not flatten the styling of the others.
+    ///
+    /// `pointer` is the frame's absolute integer pointer in scaled GUI pixels
+    /// (truncated toward zero); `gui_size` is that frame's scaled width and height.
+    /// `origin` is the panel's top-left in the same coordinates. The pointer may
+    /// be outside the panel; use these frame values rather than caching a size.
     #[hook(
         side = "client",
-        version = 2,
+        version = 3,
         contract = "collect",
         out = "lines",
         scope = "block_entity",
         key = "block",
         neoforge = "none (see screen)"
     )]
-    fn screen_tooltip();
+    fn screen_tooltip(
+        block: &str,
+        data: &[i32],
+        at: [f32; 2],
+        slot: Option<u32>,
+        origin: [f32; 2],
+        pointer: [i32; 2],
+        gui_size: [i32; 2],
+        lines: &mut Vec<(Text, u32)>,
+    );
 }

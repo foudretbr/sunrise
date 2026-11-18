@@ -1126,15 +1126,8 @@ impl Game<'_> {
     /// bigger value wraps), and `data` is empty until the server's first
     /// values arrive, so read it with `get`. Draw with `native_sprite`, `native_fill` and
     /// `native_text`.
-    pub(in crate::game) fn native_screen_draw(
-        &self,
-        block: &str,
-        pos: Option<[i32; 3]>,
-        data: &[i32],
-        draw: &mut HudBatch,
-        origin: [f32; 2],
-    ) {
-        self.fire_screen_draw(block, pos, data, draw, origin);
+    pub(in crate::game) fn native_screen_draw(&self, call: mod_api::__private::ScreenDrawCall<'_>) {
+        self.fire_screen_draw(call);
     }
     /// The open screen has drawn itself and its tooltips (`Screen.render`,
     /// the point of `ScreenEvent.Render.Post`): draw over it with
@@ -1363,13 +1356,9 @@ impl Game<'_> {
     /// a mapped slot. The listener's final lines replace the item's lines.
     pub(in crate::game) fn native_screen_tooltip(
         &self,
-        block: &str,
-        data: &[i32],
-        at: [f32; 2],
-        slot: Option<u32>,
-        lines: &mut Vec<(Text, u32)>,
+        call: mod_api::__private::ScreenTooltipCall<'_>,
     ) {
-        self.fire_screen_tooltip(block, data, at, slot, lines);
+        self.fire_screen_tooltip(call);
     }
     /// A player pressed a mod container's button (`clickMenuButton`), on
     /// the server. The block entity is out of the world during the call;

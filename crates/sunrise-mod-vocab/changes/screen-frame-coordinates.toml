@@ -1,0 +1,3 @@
+ids = ["hook:screen_draw", "hook:screen_tooltip"]
+why = "Version 3 of both hooks adds the frame pointer and GUI size. screen_tooltip also gains the panel origin."
+migrate = "Request hook_version = 3 for screen_draw and screen_tooltip. Rebuild and use event.pointer and event.gui_size for absolute scaled GUI coordinates. screen_tooltip's event.at remains relative to event.origin."
