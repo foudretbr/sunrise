@@ -103,7 +103,7 @@ impl PackInfo {
 pub fn load_icon(png: &[u8]) -> Option<Arc<[u8]>> {
     scale_icon(crate::hud::decode_bytes(png).ok()?)
 }
-/// A project icon Modrinth served (PNG, WebP or JPEG,
+/// A hit's icon a pack source fetched (PNG, WebP or JPEG,
 /// [`crate::hud::decode_image_bytes`]), scaled as [`load_icon`] scales a pack's.
 pub fn load_fetched_icon(bytes: &[u8]) -> Option<Arc<[u8]>> {
     scale_icon(crate::hud::decode_image_bytes(bytes).ok()?)
@@ -367,8 +367,8 @@ pub enum Action {
     Done,
     /// Sunrise's own: the options button on the card of this pack, which has Polytone options.
     Options(String),
-    /// Sunrise's own: a Modrinth hit the player picked, to download into the
-    /// packs folder. The screen does not know where that is.
+    /// A pack source's hit the player picked, to download into the packs
+    /// folder. The screen does not know where that is.
     BrowsePick(usize),
 }
 

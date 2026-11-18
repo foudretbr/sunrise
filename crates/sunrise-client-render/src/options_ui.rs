@@ -1675,8 +1675,8 @@ pub enum Event {
     },
     /// An accepted button press or the release of a slider.
     ButtonClick,
-    /// Sunrise's own: download the Modrinth hit at this index of the pack
-    /// screen's browser. The game owns the packs folder, not this screen.
+    /// Download the pack source's hit at this index of the pack screen's
+    /// browser. The game owns the packs folder, not this screen.
     DownloadPack(usize),
     /// Close the options screens (back to the pause menu or title).
     Close,
