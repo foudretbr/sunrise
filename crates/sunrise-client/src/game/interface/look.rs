@@ -11,7 +11,10 @@ pub(crate) struct LookCache {
 
 impl Game<'_> {
     /// This player's look, re-read only when some crate changed one: one atomic load otherwise.
-    #[allow(dead_code, reason = "the first knob readers come with the features that move out")]
+    #[allow(
+        dead_code,
+        reason = "the first knob readers come with the features that move out"
+    )]
     pub(crate) fn look(&mut self) -> &Look {
         let generation = look::engine::generation();
         if self.look.generation != generation {
