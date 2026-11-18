@@ -58,8 +58,70 @@ index ac813ca..a446846 100644
      let mut files = horizon_mixins_transform::transform(&root, &plan)?;
      native::stage(&plan, &mut files, extras)?;
      lockfile::complete(&root, &out, &plan, &mut files)?;
+diff --git a/crates/horizon-mixins-cli/tests/cases/advanced.rs b/crates/horizon-mixins-cli/tests/cases/advanced.rs
+index 19f6d92..f84b264 100644
+--- a/crates/horizon-mixins-cli/tests/cases/advanced.rs
++++ b/crates/horizon-mixins-cli/tests/cases/advanced.rs
+@@ -330,7 +330,7 @@ fn competing_value_signatures_and_overwrites_fail_before_staging() {
+             .find(|i| i["id"].as_str() == Some(id))
+             .unwrap();
+         let target = injection["target"].as_str().unwrap();
+-        f.append("mods/alpha/horizon-mixin.toml", &format!("\n[[injection]]\nid=\"exclusive\"\ntarget=\"{target}\"\nkind=\"OVERWRITE\"\nhelper=\"exclusive.rs\"\n"));
++        f.append("mods/alpha/horizon-mixin.toml", &format!("\n[[injection]]\nid=\"exclusive\"\ntarget=\"{target}\"\nkind=\"OVERWRITE\"\nhelper=\"exclusive.rs\"\nfingerprint=\"{}\"\n", pin(&f.root, target)));
+         fs::write(
+             f.mods.join("alpha/exclusive.rs"),
+             "fn replacement() -> i32 { 0 }",
+@@ -591,3 +591,30 @@ fn call_selector_identifier_boundaries_cannot_alias_a_cast() {
+     f.append("mods/alpha/horizon-mixin.toml", "\n[[injection]]\nid=\"cast-selector\"\ntarget=\"advanced_game::cast_selector\"\nkind=\"BEFORE_CALL\"\nselector=\"numeric(valueasi64,log).number\"\nordinal=0\nrequire=1\nhelper=\"combined-before.rs\"\nbindings=[{name=\"log\",ty=\"&mut Vec<&'static str>\",value=\"&mut *log\"}]\n");
+     failure(&f, "E_MATCH_COUNT");
+ }
++
++#[test]
++fn an_overwrite_conflicts_with_another_mods_wrap_operation_inside_the_function() {
++    // `alpha` wraps `original_owned` inside `advanced_game::wrapping`; `gamma` overwrites it.
++    let f = fixture();
++    let target = "advanced_game::wrapping";
++    fs::create_dir_all(f.mods.join("gamma")).unwrap();
++    fs::write(
++        f.mods.join("gamma/horizon-mixin.toml"),
++        format!(
++            "[mod]\nid = \"gamma\"\nversion = \"0.1.0\"\n\n[[injection]]\nid = \"second\"\ntarget = \"{target}\"\nkind = \"OVERWRITE\"\nhelper = \"second.rs\"\nfingerprint = \"{}\"\n",
++            pin(&f.root, target)
++        ),
++    )
++    .unwrap();
++    fs::write(
++        f.mods.join("gamma/second.rs"),
++        "fn second() -> String { String::new() }",
++    )
++    .unwrap();
++    let e = build_plan(&f.root, &f.mods).unwrap_err();
++    assert_eq!(e.code, "E_OVERWRITE_CONFLICT", "{e}");
++    assert!(
++        e.message.contains("alpha/wrap-owned") && e.message.contains("gamma/second"),
++        "{e}"
++    );
++}
+diff --git a/crates/horizon-mixins-cli/tests/cases/effects.rs b/crates/horizon-mixins-cli/tests/cases/effects.rs
+index 0f943f6..08e51ec 100644
+--- a/crates/horizon-mixins-cli/tests/cases/effects.rs
++++ b/crates/horizon-mixins-cli/tests/cases/effects.rs
+@@ -471,6 +471,13 @@ helper="overwrite-new.rs"
+ bindings=[{name="health",ty="i32",value="health"}]
+ "#,
+     );
++    f.append(
++        "mods/alpha/horizon-mixin.toml",
++        &format!(
++            "fingerprint=\"{}\"\n",
++            pin(&f.root, "effects_game::state::Entity::new")
++        ),
++    );
+     fs::write(
+         f.mods.join("alpha/overwrite-new.rs"),
+         "fn replacement(health:i32)->Entity {Entity::new(health)}",
 diff --git a/crates/horizon-mixins-cli/tests/cases/local_scope.rs b/crates/horizon-mixins-cli/tests/cases/local_scope.rs
-index a2ac95a..acb9e6b 100644
+index a2ac95a..bab6251 100644
 --- a/crates/horizon-mixins-cli/tests/cases/local_scope.rs
 +++ b/crates/horizon-mixins-cli/tests/cases/local_scope.rs
 @@ -129,12 +129,14 @@ fn sites_in_closures_and_other_unsupported_scopes_stay_refused() {
@@ -82,7 +144,7 @@ index a2ac95a..acb9e6b 100644
          let f = fixture(body, &before("before", "sink", 1, 0));
          reject(&f, "E_UNSUPPORTED_CONTROL_FLOW");
      }
-@@ -172,11 +174,11 @@ fn local_use_that_could_change_generated_code_is_refused() {
+@@ -172,11 +174,15 @@ fn local_use_that_could_change_generated_code_is_refused() {
          &before("before", "sink", 1, 0),
      );
      reject(&f, "E_UNSUPPORTED_MACRO");
@@ -92,12 +154,16 @@ index a2ac95a..acb9e6b 100644
          "use std::vec::Vec; sink(1)",
          "\n[[injection]]\nid=\"overwrite\"\ntarget=\"fixture_game::run\"\nkind=\"OVERWRITE\"\nhelper=\"over.rs\"\n",
      );
++    f.append(
++        "mods/alpha/horizon-mixin.toml",
++        &format!("fingerprint=\"{}\"\n", pin(&f.root, "fixture_game::run")),
++    );
      fs::write(f.mods.join("alpha/over.rs"), "fn over() -> i32 { 1 }").unwrap();
 -    reject(&f, "E_UNSUPPORTED_CONTROL_FLOW");
 +    build_plan(&f.root, &f.mods).unwrap();
  }
 diff --git a/crates/horizon-mixins-cli/tests/cases/returns.rs b/crates/horizon-mixins-cli/tests/cases/returns.rs
-index bca7938..2f2eb44 100644
+index bca7938..988c1ce 100644
 --- a/crates/horizon-mixins-cli/tests/cases/returns.rs
 +++ b/crates/horizon-mixins-cli/tests/cases/returns.rs
 @@ -104,7 +104,7 @@ fn return_hooks_still_refuse_references_to_calls_and_closures_in_the_values_they
@@ -125,7 +191,7 @@ index bca7938..2f2eb44 100644
  }
 
  #[test]
-@@ -200,3 +201,204 @@ fn the_helper_sees_each_exit_value_once() {
+@@ -200,3 +201,208 @@ fn the_helper_sees_each_exit_value_once() {
      .unwrap();
      f.run("check");
  }
@@ -249,6 +315,10 @@ index bca7938..2f2eb44 100644
 +"#,
 +    )
 +    .unwrap();
++    f.append(
++        "mods/alpha/horizon-mixin.toml",
++        &format!("fingerprint=\"{}\"\n", pin(&f.root, "fixture_game::run")),
++    );
 +    fs::write(
 +        f.mods.join("alpha/overwrite.rs"),
 +        "fn run() -> Option<i32> { crate::mark(\"overwrite\"); Some(7) }",
@@ -330,10 +400,55 @@ index bca7938..2f2eb44 100644
 +    assert_eq!(e.code, "E_UNSUPPORTED_CONTROL_FLOW", "{e}");
 +    assert!(e.message.contains("selected site contains `?`"), "{e}");
 +}
+diff --git a/crates/horizon-mixins-cli/tests/cases/scoped.rs b/crates/horizon-mixins-cli/tests/cases/scoped.rs
+index 47f7416..e7d7101 100644
+--- a/crates/horizon-mixins-cli/tests/cases/scoped.rs
++++ b/crates/horizon-mixins-cli/tests/cases/scoped.rs
+@@ -410,7 +410,7 @@ fn tuple_contracts_and_cross_kind_conflicts_fail_before_staging() {
+     );
+     failure(&f, "E_UNSUPPORTED_SITE");
+     let f = fixture();
+-    f.append("mods/alpha/horizon-mixin.toml","\n[[injection]]\nid='overwrite-tuple'\nkind='OVERWRITE'\ntarget='scoped_game::jointly'\nhelper='overwrite.rs'\n");
++    f.append("mods/alpha/horizon-mixin.toml",&format!("\n[[injection]]\nid='overwrite-tuple'\nkind='OVERWRITE'\ntarget='scoped_game::jointly'\nhelper='overwrite.rs'\nfingerprint='{}'\n", pin(&f.root, "scoped_game::jointly")));
+     fs::write(
+         f.mods.join("alpha/overwrite.rs"),
+         "fn replacement()->String{String::new()}",
+diff --git a/crates/horizon-mixins-cli/tests/cases/standard_macros.rs b/crates/horizon-mixins-cli/tests/cases/standard_macros.rs
+index 531d0f9..a012adf 100644
+--- a/crates/horizon-mixins-cli/tests/cases/standard_macros.rs
++++ b/crates/horizon-mixins-cli/tests/cases/standard_macros.rs
+@@ -78,6 +78,18 @@ fn all_hook_families_compile_with_preserved_standard_macros() {
+             Add.visit_file_mut(&mut file);
+             fs::write(f.root.join(path), horizon_mixins_core::index::tokens(&file)).unwrap();
+         }
++        if workspace == "game" {
++            // The added statements change the overwritten function the row pins.
++            let old = pin(
++                &repo().join("fixtures/game"),
++                "fixture_game::overwrite::value",
++            );
++            f.replace(
++                "mods/alpha/horizon-mixin.toml",
++                &old,
++                &pin(&f.root, "fixture_game::overwrite::value"),
++            );
++        }
+         let before = source::files(&f.root).unwrap();
+         f.run("check");
+         let staged = source::files(&f.out).unwrap();
 diff --git a/crates/horizon-mixins-cli/tests/integration.rs b/crates/horizon-mixins-cli/tests/integration.rs
-index fcf5a46..41ccb83 100644
+index fcf5a46..5d71485 100644
 --- a/crates/horizon-mixins-cli/tests/integration.rs
 +++ b/crates/horizon-mixins-cli/tests/integration.rs
+@@ -464,7 +464,7 @@ fn ambiguous_macro_generated_overwrite_and_fingerprint_failures() {
+         } else {
+             ("replace.rs", "input", "i32", "input")
+         };
+-        f.append("mods/alpha/horizon-mixin.toml", &format!("\n[[injection]]\nid = \"conflict\"\ntarget = \"{target}\"\nkind = \"OVERWRITE\"\nhelper = \"{helper}\"\nbindings = [{{ name = \"{name}\", ty = \"{ty}\", value = \"{value}\" }}]\n"));
++        f.append("mods/alpha/horizon-mixin.toml", &format!("\n[[injection]]\nid = \"conflict\"\ntarget = \"{target}\"\nkind = \"OVERWRITE\"\nhelper = \"{helper}\"\nfingerprint = \"{}\"\nbindings = [{{ name = \"{name}\", ty = \"{ty}\", value = \"{value}\" }}]\n", pin(&f.root, target)));
+         let error = build_plan(&f.root, &f.mods).unwrap_err();
+         assert_eq!(error.code, "E_OVERWRITE_CONFLICT");
+         assert!(error.message.contains("competing injections"));
 @@ -697,14 +697,14 @@ fn cfg_attributes_shared_module_sources_and_shadowing_fail_closed() {
          ),
          (
@@ -353,7 +468,115 @@ index fcf5a46..41ccb83 100644
              "E_UNSUPPORTED_CONTROL_FLOW",
          ),
          (
-@@ -890,3 +890,827 @@ fn production_test_cfg_modules_are_indexed_and_applied() {
+@@ -839,6 +839,107 @@ fn receiver_and_result_drop_order() {
+     );
+ }
+
++/// The fingerprint an OVERWRITE row pins for the function `target` of the workspace at `root`.
++fn pin(root: &std::path::Path, target: &str) -> String {
++    let index = Index::load(root).unwrap();
++    let f = index.resolve(target).unwrap();
++    source::fingerprint(format!(
++        "{}{}",
++        horizon_mixins_core::index::tokens(&f.signature),
++        horizon_mixins_core::index::tokens(&f.block)
++    ))
++}
++
++/// Adds a mod `gamma` with one injection `second` (`row`, with `helper_source` as its helper).
++fn add_mod(f: &Fixture, row: &str, helper_source: &str) {
++    fs::create_dir_all(f.mods.join("gamma")).unwrap();
++    fs::write(
++        f.mods.join("gamma/horizon-mixin.toml"),
++        format!("[mod]\nid = \"gamma\"\nversion = \"0.1.0\"\n\n[[injection]]\nid = \"second\"\n{row}\nhelper = \"second.rs\"\n"),
++    )
++    .unwrap();
++    fs::write(f.mods.join("gamma/second.rs"), helper_source).unwrap();
++}
++
++#[test]
++fn an_overwrite_must_pin_the_function_it_replaces() {
++    let target = "fixture_game::overwrite::value";
++    let current = pin(&Fixture::new().root, target);
++    // Without a fingerprint the row is refused and the refusal prints the current value.
++    let f = Fixture::new();
++    f.replace(
++        "mods/alpha/horizon-mixin.toml",
++        &format!("fingerprint = \"{current}\"\n"),
++        "",
++    );
++    let e = build_plan(&f.root, &f.mods).unwrap_err();
++    assert_eq!(e.code, "E_FINGERPRINT", "{e}");
++    assert_eq!(e.mod_id.as_deref(), Some("alpha"));
++    assert_eq!(e.injection_id.as_deref(), Some("replace"));
++    assert!(
++        e.message
++            .contains(&format!("expected <none>, got {current}")),
++        "{e}"
++    );
++    // A stale value is refused with the same code, naming the row; the right one plans.
++    let f = Fixture::new();
++    f.replace(
++        "mods/alpha/horizon-mixin.toml",
++        &current,
++        &"0".repeat(current.len()),
++    );
++    let e = build_plan(&f.root, &f.mods).unwrap_err();
++    assert_eq!(e.code, "E_FINGERPRINT", "{e}");
++    assert_eq!(e.injection_id.as_deref(), Some("replace"));
++    assert!(e.message.contains("original function changed"), "{e}");
++    assert!(e.message.contains(&format!("got {current}")), "{e}");
++    build_plan(&Fixture::new().root, &Fixture::new().mods).unwrap();
++    // The game adding a line to the function is the drift the pin catches.
++    let f = Fixture::new();
++    f.replace(
++        "engine/src/replacement.rs",
++        "input - 1",
++        "let input = input + 0; input - 1",
++    );
++    let e = build_plan(&f.root, &f.mods).unwrap_err();
++    assert_eq!(e.code, "E_FINGERPRINT", "{e}");
++    assert!(e.message.contains("original function changed"), "{e}");
++}
++
++#[test]
++fn an_overwrite_conflicts_with_every_other_mods_row_on_its_function() {
++    let value = "fixture_game::overwrite::value";
++    let current = pin(&Fixture::new().root, value);
++    for (what, row, helper) in [
++        (
++            "an overwrite",
++            format!(
++                "target = \"{value}\"\nkind = \"OVERWRITE\"\nfingerprint = \"{current}\"\nbindings = [{{ name = \"input\", ty = \"i32\", value = \"input\" }}]"
++            ),
++            "fn second(input: i32) -> i32 { input }",
++        ),
++        (
++            "a head",
++            format!(
++                "target = \"{value}\"\nkind = \"HEAD\"\nbindings = [{{ name = \"input\", ty = \"i32\", value = \"input\" }}]"
++            ),
++            "fn second(input: i32) { let _ = input; }",
++        ),
++    ] {
++        let f = Fixture::new();
++        add_mod(&f, &row, helper);
++        let e = build_plan(&f.root, &f.mods).unwrap_err();
++        assert_eq!(e.code, "E_OVERWRITE_CONFLICT", "{what}: {e}");
++        assert!(
++            e.message.contains("alpha/replace") && e.message.contains("gamma/second"),
++            "{what}: {e}"
++        );
++        let output = f.command("apply").output().unwrap();
++        assert!(!output.status.success(), "{what}");
++        assert!(!f.out.exists(), "{what}");
++    }
++}
++
+ #[path = "cases/advanced.rs"]
+ mod advanced;
+
+@@ -890,3 +991,828 @@ fn production_test_cfg_modules_are_indexed_and_applied() {
      let error = build_plan(&f.root, &f.mods).unwrap_err();
      assert!(format!("{error:?}").contains("E_TARGET_NOT_FOUND"));
  }
@@ -422,6 +645,7 @@ index fcf5a46..41ccb83 100644
 +    pub fn scale<T: Into<f64>>(t: T) -> f64 {{ t.into() }}
 +    pub fn default_value<T>(x: T) -> Result<T, &'static str> {{ Ok(x) }}
 +    pub fn fail<T>() -> Result<T, usize> {{ Err(std::mem::size_of::<T>()) }}
++    pub fn width<T>(_t: T) -> usize {{ std::mem::size_of::<T>() }}
 +    pub fn run_param(engine: &Engine, x: i32) -> i32 {{ engine.go(x) }}
 +    pub fn run(ok: bool, bad_arg: bool) -> Result<i32, Failure> {{ {body} }}
 +    "#
@@ -1961,7 +2185,7 @@ index 5bac667..f85ac3c 100644
  pub mod modules;
 
 diff --git a/crates/horizon-mixins-core/src/plan.rs b/crates/horizon-mixins-core/src/plan.rs
-index 848dcc0..8a80e7c 100644
+index 848dcc0..9119662 100644
 --- a/crates/horizon-mixins-core/src/plan.rs
 +++ b/crates/horizon-mixins-core/src/plan.rs
 @@ -1,5 +1,6 @@
@@ -2028,7 +2252,45 @@ index 848dcc0..8a80e7c 100644
      let native = crate::native::plan(&root, &index.packages, &index.bins, &inputs, &mods)?;
      let mut injections = Vec::new();
      let mut planned_bridges = Vec::new();
-@@ -604,7 +630,17 @@ pub fn build_staged(workspace: &Path, mods: &Path) -> Result<(Plan, crate::nativ
+@@ -495,18 +521,25 @@ pub fn build_staged(workspace: &Path, mods: &Path) -> Result<(Plan, crate::nativ
+             }
+             let function_fingerprint =
+                 source::fingerprint(format!("{}{}", tokens(&f.signature), tokens(&f.block)));
+-            if injection
+-                .fingerprint
+-                .as_ref()
+-                .is_some_and(|expected| expected != &function_fingerprint)
+-            {
+-                return Err(context(Diagnostic::new(
+-                    "E_FINGERPRINT",
+-                    format!(
+-                        "original function changed; expected {}, got {function_fingerprint}",
+-                        injection.fingerprint.as_ref().unwrap()
+-                    ),
+-                )));
++            match injection.fingerprint.as_deref() {
++                Some(expected) if expected == function_fingerprint => {}
++                None if injection.kind != Kind::Overwrite => {}
++                expected => {
++                    // An OVERWRITE drops the whole body, so a line the game adds later would vanish
++                    // silently: it must pin the function it replaces.
++                    let message = if expected.is_none() {
++                        "OVERWRITE requires the `fingerprint` of the function it replaces"
++                    } else {
++                        "original function changed"
++                    };
++                    return Err(context(Diagnostic::new(
++                        "E_FINGERPRINT",
++                        format!(
++                            "{message}; expected {}, got {function_fingerprint}",
++                            expected.unwrap_or("<none>")
++                        ),
++                    )));
++                }
+             }
+             let mut context_function = f.clone();
+             if injection.kind == Kind::Head {
+@@ -604,7 +637,17 @@ pub fn build_staged(workspace: &Path, mods: &Path) -> Result<(Plan, crate::nativ
                          .collect()
                  };
                  if matches.len() != injection.require.unwrap() {
@@ -2047,7 +2309,7 @@ index 848dcc0..8a80e7c 100644
                  }
                  let ordinal = injection.ordinal.unwrap();
                  let site = matches.get(ordinal).ok_or_else(|| {
-@@ -633,6 +669,44 @@ pub fn build_staged(workspace: &Path, mods: &Path) -> Result<(Plan, crate::nativ
+@@ -633,6 +676,44 @@ pub fn build_staged(workspace: &Path, mods: &Path) -> Result<(Plan, crate::nativ
                  {
                      return Err(context(Diagnostic::new("E_UNSUPPORTED_SITE", "the selected site contains a closure, which this hook would move into generated code").file(&f.file)));
                  }
@@ -2092,7 +2354,7 @@ index 848dcc0..8a80e7c 100644
                  if (injection.kind == Kind::BeforeCall
                      || (injection.kind == Kind::AfterCall && injection.cancellable))
                      && !site.whole_expression
-@@ -924,6 +998,11 @@ pub fn build_staged(workspace: &Path, mods: &Path) -> Result<(Plan, crate::nativ
+@@ -924,6 +1005,11 @@ pub fn build_staged(workspace: &Path, mods: &Path) -> Result<(Plan, crate::nativ
          schema: SCHEMA,
          transformer: env!("CARGO_PKG_VERSION").into(),
          rustc: rustc(&root)?,
@@ -2104,7 +2366,7 @@ index 848dcc0..8a80e7c 100644
          inputs,
          injections,
          bridges: planned_bridges,
-@@ -979,6 +1058,9 @@ pub(crate) fn validate_target_with(
+@@ -979,6 +1065,9 @@ pub(crate) fn validate_target_with(
          // are checked in those values only ([`exit_value_error`]). MODIFY_VARIABLE likewise
          // replaces only the value it selects ([`modified_value_error`]).
          rewrites_body: !matches!(kind, Kind::Return | Kind::ModifyVariable),
@@ -2114,7 +2376,7 @@ index 848dcc0..8a80e7c 100644
          // A `?` is an exit RETURN would miss; MODIFY_VARIABLE leaves one outside its value alone.
          try_outside_value: kind == Kind::ModifyVariable,
          body_macros: false,
-@@ -1005,7 +1087,10 @@ pub(crate) fn validate_target_with(
+@@ -1005,7 +1094,10 @@ pub(crate) fn validate_target_with(
      // any exit or expression inside a macro, just like ordinary HEAD.
      safety.body_macros = safety.boundary;
      safety.in_body = true;
@@ -2126,7 +2388,7 @@ index 848dcc0..8a80e7c 100644
      if safety.error.is_none() && kind == Kind::Return {
          safety.error = exit_value_error(&f.block);
      }
-@@ -1173,6 +1258,7 @@ struct Safety {
+@@ -1173,6 +1265,7 @@ struct Safety {
      error: Option<(&'static str, &'static str)>,
      boundary: bool,
      rewrites_body: bool,
@@ -2134,7 +2396,7 @@ index 848dcc0..8a80e7c 100644
      try_outside_value: bool,
      body_macros: bool,
      relaxed: bool,
-@@ -1237,6 +1323,9 @@ impl<'ast> Visit<'ast> for Safety {
+@@ -1237,6 +1330,9 @@ impl<'ast> Visit<'ast> for Safety {
              // RETURN never rewrites inside a closure; what is inside is still checked.
              Expr::Closure(c) if (!self.rewrites_body || self.relaxed) && c.asyncness.is_none() => {}
              Expr::Try(_) if self.try_outside_value => {}
@@ -2144,7 +2406,7 @@ index 848dcc0..8a80e7c 100644
              Expr::Closure(_)
              | Expr::Async(_)
              | Expr::Await(_)
-@@ -1247,7 +1336,10 @@ impl<'ast> Visit<'ast> for Safety {
+@@ -1247,7 +1343,10 @@ impl<'ast> Visit<'ast> for Safety {
              | Expr::Const(_) => self.error = Some(CLOSURES_ETC),
              // Calls under a reference can depend on temporary lifetime extension.
              Expr::Reference(r)
@@ -2156,7 +2418,7 @@ index 848dcc0..8a80e7c 100644
              {
                  self.error = Some(REFERENCED_CALL)
              }
-@@ -1346,6 +1438,23 @@ impl<'ast> Visit<'ast> for Safety {
+@@ -1346,6 +1445,23 @@ impl<'ast> Visit<'ast> for Safety {
          }
      }
  }
@@ -2400,3 +2662,13 @@ index f4edd3d..d2a70cb 100644
              };
              arguments = vec![receiver_arg];
              arguments.extend(c.args.iter().cloned());
+diff --git a/fixtures/mods/alpha/horizon-mixin.toml b/fixtures/mods/alpha/horizon-mixin.toml
+index f2055db..1308416 100644
+--- a/fixtures/mods/alpha/horizon-mixin.toml
++++ b/fixtures/mods/alpha/horizon-mixin.toml
+@@ -49,4 +49,5 @@ id = "replace"
+ target = "fixture_game::overwrite::value"
+ kind = "OVERWRITE"
+ helper = "replace.rs"
++fingerprint = "1a21793757ea38555e338cc1d8d8a4228a229240c4245c21dfe3edba45e77e6b"
+ bindings = [{ name = "input", ty = "i32", value = "input" }]

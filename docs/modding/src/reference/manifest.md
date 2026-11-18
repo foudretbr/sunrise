@@ -68,7 +68,7 @@ file that receives it, a `name` that is a Rust module identifier, and a `source`
 
 `[[inject]]` only fills compiled slots and never compiles game code. Native source edits
 use `[[native.mixin]]` with `id`, `target`, uppercase `kind`, `helper` and the other
-horizon-mixins options ([Mixins](../concepts/native-route/2-mixins.md)). `[[native.loop]]`, `[[native.bridge]]` and `[[native.module]]` complete the route; `[[native.state]]` is refused. See [The native route](../concepts/native-route.md) for every table, its fields and its refusals.
+horizon-mixins options, which are forwarded to the tool as written and so are the one place a row's unknown key is not refused here but when the tool reads it ([Mixins](../concepts/native-route/2-mixins.md)). An `OVERWRITE` row must carry the tool's `fingerprint`. `[[native.loop]]`, `[[native.bridge]]` and `[[native.module]]` complete the route; `[[native.state]]` is refused. See [The native route](../concepts/native-route.md) for every table, its fields and its refusals.
 
 A wasm mod adds `[wasm]` instead, written by `cargo sunrise-mod build --wasm`
 ([Building to `mod.wasm`](../how-to/wasm-mods.md)):
