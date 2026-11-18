@@ -1,6 +1,6 @@
 //! Where the resource pack screen's online browser gets its packs (docs/layers.md, "Platform
 //! registries"): a crate registers a [`Source`], and the engine draws the browse screen over it.
-//! The engine owns no pack site once one is registered; with none it uses its built-in source.
+//! The engine knows no pack site: with no enabled source the pack screen has no Add button.
 use crate::TooLate;
 use crate::registry::Registry;
 use std::path::Path;
@@ -31,6 +31,17 @@ pub enum Message {
     Failed(String),
 }
 
+/// The source's own text on the browse screen, as translation keys.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Labels {
+    /// The Add button's tooltip.
+    pub add: &'static str,
+    /// The search box's hint.
+    pub search_hint: &'static str,
+    /// Shown while a search runs.
+    pub working: &'static str,
+}
+
 /// A place to search and download resource packs from. Its work runs on its own threads and
 /// reports through [`Source::poll`]; every method returns quickly. Per-player state is indexed by
 /// [`crate::seat`].
@@ -39,6 +50,8 @@ pub trait Source: Sync {
     fn enabled(&self) -> bool;
     /// The translation keys of the filters on offer; `search` gets indices into this list.
     fn filters(&self) -> &'static [&'static str];
+    /// Its text on the browse screen.
+    fn labels(&self) -> Labels;
     /// The player opened the browse screen: start this seat's session afresh, dropping any left over.
     fn open(&self);
     /// Starts a search for `query` with the `chosen` filters on.
@@ -49,8 +62,9 @@ pub trait Source: Sync {
     fn download(&self, hit: usize, dir: &Path, game_version: &str);
     /// The next finished piece of work, if any.
     fn poll(&self) -> Option<Message>;
-    /// The player left the browse screen: drop what this seat holds.
-    fn close(&self);
+    /// The browse screen opened on `seat` is gone: drop what that seat holds. It may come on
+    /// another player's turn (a splitscreen guest leaving).
+    fn close(&self, seat: usize);
 }
 
 static SOURCES: Registry<dyn Source> = Registry::new();
@@ -70,8 +84,8 @@ pub mod engine {
         SOURCES.all()
     }
 
-    /// The first enabled registered source; `None` when there is none (the engine then uses its
-    /// built-in one).
+    /// The first enabled registered source; `None` when there is none (the pack screen then has
+    /// no Add button).
     pub fn source() -> Option<&'static dyn Source> {
         all().iter().copied().find(|s| s.enabled())
     }
@@ -93,6 +107,13 @@ mod tests {
                 fn filters(&self) -> &'static [&'static str] {
                     &[]
                 }
+                fn labels(&self) -> Labels {
+                    Labels {
+                        add: "a",
+                        search_hint: "s",
+                        working: "w",
+                    }
+                }
                 fn open(&self) {}
                 fn search(&self, _: &str, _: &[usize]) {}
                 fn fetch_icons(&self) {}
@@ -100,7 +121,7 @@ mod tests {
                 fn poll(&self) -> Option<Message> {
                     None
                 }
-                fn close(&self) {}
+                fn close(&self, _: usize) {}
             }
         };
     }

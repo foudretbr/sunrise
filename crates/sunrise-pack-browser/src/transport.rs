@@ -1,5 +1,4 @@
-//! Browsing Modrinth for resource packs from the Select Resource Packs
-//! screen, so a pack can be added without leaving the game.
+//! The Modrinth client behind the source: search, icons and download.
 //!
 //! The launcher has its own browser (`launcher/src/browser/`), but the
 //! launcher is a separate workspace: nothing there is reachable from the
@@ -17,12 +16,12 @@ const AGENT: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     " (in-game resource pack browser)"
 );
-const API: &str = "https://api.modrinth.com/v2";
+use sunrise_addresses::MODRINTH_API as API;
 /// Hits one search asks for. The list shows them all; Modrinth's own cap is
 /// 100.
 pub const LIMIT: usize = 20;
 
-pub use sunrise_hooks::packs::{Hit, Message};
+pub use sunrise_platform::packs::{Hit, Message};
 
 /// The filters the sidebar offers: the label's translation key, and the
 /// Modrinth facet it adds. Facets of one group are OR-ed, groups AND-ed, so
@@ -209,8 +208,8 @@ pub fn free_path(dir: &Path, name: &str) -> Option<PathBuf> {
         .find(|candidate| !candidate.exists())
 }
 
-/// The transport behind the built-in source: the worker channel, the last hits and the
-/// one-at-a-time guard. What the screen shows lives in `pack_source_ui::View`.
+/// The transport behind the source: the worker channel, the last hits and the one-at-a-time
+/// guard. What the screen shows lives in the engine's browse screen.
 pub struct Browser {
     hits: Vec<Hit>,
     /// Set while a search or a download is in flight.
@@ -410,9 +409,10 @@ fn get_bytes(url: &str, max: usize) -> Result<Vec<u8>, String> {
 }
 
 /// SHA-1 of `bytes` as lowercase hex, for the checksum Modrinth states beside
-/// each file (the `sha1` crate the skins already use).
+/// each file.
 fn sha1_hex(bytes: &[u8]) -> String {
-    crate::skins::sha1(bytes)
+    use sha1::{Digest, Sha1};
+    Sha1::digest(bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()

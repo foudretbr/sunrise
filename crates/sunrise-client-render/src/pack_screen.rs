@@ -391,15 +391,14 @@ pub struct PackScreen {
     pub changed: bool,
     /// The packs' icons by their [`icon_texture`], and the browse screen's.
     pub icons: HashMap<String, Arc<[u8]>>,
-    /// Sunrise's own Add button and its Modrinth list, when the player has
-    /// turned `packBrowser` on. Off, the screen stays vanilla's exactly
-    /// (tools/test_pack_screen_parity.py).
+    /// The browse screen the Add button opened. Without a source the screen
+    /// stays vanilla's exactly (tools/test_pack_screen_parity.py).
     pub browser: Option<crate::pack_source_ui::View>,
     /// Which backdrop this screen wants drawn behind it this frame
     /// ([`Backdrop`]). Vanilla's own pack screen never asks for one.
     pub backdrop: Backdrop,
-    /// Whether that button is drawn at all.
-    pub browsing_allowed: bool,
+    /// The source the Add button browses; `None`, no Add button.
+    pub browsing: Option<crate::pack_source_ui::Browsing>,
     /// The packs with Polytone options (#11486): their cards carry an options button.
     pub with_options: std::collections::BTreeSet<String>,
     /// Which atlas slot holds which icon, kept from one frame to the next
@@ -500,7 +499,7 @@ impl PackScreen {
             lists: [List::new(false, height - 66), List::new(true, height - 66)],
             confirm: None,
             browser: None,
-            browsing_allowed: false,
+            browsing: None,
             with_options: Default::default(),
             backdrop: Backdrop::None,
             icon_slots: Default::default(),
@@ -1102,10 +1101,8 @@ impl PackScreen {
     /// The Add button and the screen it opens. `None` leaves the click to
     /// the vanilla screen beneath.
     fn browser_click(&mut self, m: &Measure, x: f64, y: f64) -> Option<Action> {
-        use crate::pack_source_ui::{Click, View};
-        if !self.browsing_allowed {
-            return None;
-        }
+        use crate::pack_source_ui::Click;
+        let browsing = self.browsing?;
         let g = self.geom();
         if let Some(view) = &mut self.browser {
             return Some(match view.click(m, g, x, y) {
@@ -1125,20 +1122,19 @@ impl PackScreen {
         if d::inside((x as i32, y as i32), bx, by, ADD_SIZE, ADD_SIZE) {
             // Opens on the text already in the search box, which the browse screen's own box
             // then carries.
-            self.browser = Some(View::open(m, &self.search.value));
+            self.browser = Some(browsing.open(m, &self.search.value));
             // Sunrise's own screen, so it may ask for the menu panorama.
             self.backdrop = Backdrop::Panorama;
             return Some(Action::None);
         }
         None
     }
-    /// Sunrise's Add button, and the screen it opens. Nothing is drawn
-    /// unless the player turned `packBrowser` on, so the screen's vanilla
-    /// parity is untouched by default.
+    /// The Add button, and the screen it opens. Nothing is drawn without a
+    /// source, so the screen's vanilla parity is untouched.
     fn draw_browser(&self, out: &mut Vec<Draw>, m: &Measure, mouse: (i32, i32), now_ms: i64) {
-        if !self.browsing_allowed {
+        let Some(browsing) = self.browsing else {
             return;
-        }
+        };
         if let Some(view) = &self.browser {
             view.draw(out, m, self.geom(), mouse, now_ms, &self.icons);
             return;
@@ -1158,7 +1154,7 @@ impl PackScreen {
             now_ms,
         );
         if hover {
-            d::tooltip(out, m, &tr("sunrise.pack.addInfo"), mouse);
+            d::tooltip(out, m, &browsing.add_label(), mouse);
         }
     }
     /// The options button on the card of row `i` of list `side`, when its pack has
@@ -1746,7 +1742,32 @@ mod click_sound_tests {
             Vec::new(),
             &[],
         );
-        screen.browsing_allowed = true;
+        struct Quiet;
+        impl sunrise_hooks::packs::Source for Quiet {
+            fn enabled(&self) -> bool {
+                true
+            }
+            fn filters(&self) -> &'static [&'static str] {
+                &[]
+            }
+            fn labels(&self) -> sunrise_hooks::packs::Labels {
+                sunrise_hooks::packs::Labels {
+                    add: "test.add",
+                    search_hint: "test.hint",
+                    working: "test.working",
+                }
+            }
+            fn open(&self) {}
+            fn search(&self, _: &str, _: &[usize]) {}
+            fn fetch_icons(&self) {}
+            fn download(&self, _: usize, _: &std::path::Path, _: &str) {}
+            fn poll(&self) -> Option<sunrise_hooks::packs::Message> {
+                None
+            }
+            fn close(&self, _: usize) {}
+        }
+        static QUIET: Quiet = Quiet;
+        screen.browsing = Some(crate::pack_source_ui::Browsing(&QUIET));
         // The Add button opens the browser.
         let (ax, ay) = screen.add_button(&m);
         screen.click(&m, f64::from(ax) + 2.0, f64::from(ay) + 2.0);

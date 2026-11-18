@@ -3820,12 +3820,13 @@ impl OptionsUi {
         }
         screen
     }
-    /// Whether the pack screen shows Add: a resource pack screen whose browse results someone
-    /// polls, with a source to browse. Downloads always land in the resource packs folder.
-    fn pack_browsing_allowed(&self) -> bool {
-        self.pack_source_polled
-            && self.data_pack_dir.is_none()
-            && crate::pack_source_ui::available()
+    /// What the pack screen's Add button browses: `source`, on a resource pack screen whose
+    /// browse results someone polls. Downloads always land in the resource packs folder.
+    fn pack_browsing(
+        &self,
+        source: Option<crate::pack_source_ui::Browsing>,
+    ) -> Option<crate::pack_source_ui::Browsing> {
+        source.filter(|_| self.pack_source_polled && self.data_pack_dir.is_none())
     }
     /// The pack screen at this GUI size, made on first use.
     fn packs(&mut self, atlas: &HudAtlas, size: (f32, f32)) -> &mut crate::pack_screen::PackScreen {
@@ -3853,7 +3854,7 @@ impl OptionsUi {
                     self.pack_infos.clone(),
                     &self.pack_selection,
                 );
-                screen.browsing_allowed = self.pack_browsing_allowed();
+                screen.browsing = self.pack_browsing(crate::pack_source_ui::Browsing::registered());
                 screen.changed = std::mem::take(&mut self.pack_reselected);
                 self.pack_screen = Some(screen);
             }
@@ -4609,27 +4610,49 @@ mod tests {
 
     #[test]
     fn add_shows_only_on_a_polled_resource_pack_screen_with_a_source() {
-        // The only test that turns the built-in source on: it is shared by the test threads.
+        struct Any;
+        impl sunrise_hooks::packs::Source for Any {
+            fn enabled(&self) -> bool {
+                true
+            }
+            fn filters(&self) -> &'static [&'static str] {
+                &[]
+            }
+            fn labels(&self) -> sunrise_hooks::packs::Labels {
+                sunrise_hooks::packs::Labels {
+                    add: "a",
+                    search_hint: "s",
+                    working: "w",
+                }
+            }
+            fn open(&self) {}
+            fn search(&self, _: &str, _: &[usize]) {}
+            fn fetch_icons(&self) {}
+            fn download(&self, _: usize, _: &std::path::Path, _: &str) {}
+            fn poll(&self) -> Option<sunrise_hooks::packs::Message> {
+                None
+            }
+            fn close(&self, _: usize) {}
+        }
+        static ANY: Any = Any;
+        let source = Some(crate::pack_source_ui::Browsing(&ANY));
         let mut ui = OptionsUi {
             pack_source_polled: true,
             ..OptionsUi::default()
         };
-        crate::pack_source_ui::allow_builtin(false);
-        assert!(!ui.pack_browsing_allowed(), "no source to browse");
-        crate::pack_source_ui::allow_builtin(true);
-        assert!(ui.pack_browsing_allowed());
+        assert!(ui.pack_browsing(None).is_none(), "no source to browse");
+        assert!(ui.pack_browsing(source).is_some());
         ui.data_pack_dir = Some("datapacks".into());
         assert!(
-            !ui.pack_browsing_allowed(),
+            ui.pack_browsing(source).is_none(),
             "downloads land in resourcepacks/"
         );
         ui.data_pack_dir = None;
         ui.pack_source_polled = false;
         assert!(
-            !ui.pack_browsing_allowed(),
+            ui.pack_browsing(source).is_none(),
             "the startup menu never polls the source"
         );
-        crate::pack_source_ui::allow_builtin(false);
     }
 
     /// A renderer whose destination offers nothing and whose display reports nothing.

@@ -17,7 +17,6 @@ use sunrise_client::{
     hud::HudAtlas,
     lang,
     pack_screen::{self, Compat, PackInfo, Source as PackSource},
-    pack_source_ui,
     packs::{self, Pack, Position},
     streaming::WorkerContext,
     text::{Style, Text},
@@ -254,8 +253,6 @@ impl Game<'_> {
     pub(super) fn refresh_pack_lists(&mut self) {
         let infos = self.resource_pack_infos();
         let configs = pack_configs(&self.vanilla_root());
-        let browsing = self.settings.extras.pack_browser;
-        pack_source_ui::allow_builtin(browsing);
         let o = &mut self.ui.options;
         o.pack_source_polled = true;
         o.pack_infos = infos;

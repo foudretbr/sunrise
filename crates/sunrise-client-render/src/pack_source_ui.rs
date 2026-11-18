@@ -3,15 +3,14 @@
 //! (docs/layers.md, "Platform registries"). The pack screen keeps the Add button and calls in here.
 use crate::{
     hud::PACK_ICON_SIZE,
-    pack_browser::Browser,
     pack_screen::icon_texture,
     screen_draw::{self as d, Draw, Measure, TextField},
     text::{Style, Text},
 };
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap},
     path::Path,
-    sync::{Arc, LazyLock, Mutex},
+    sync::Arc,
 };
 use sunrise_hooks::packs::{self, Hit, Message, Source};
 
@@ -49,24 +48,29 @@ fn tr(key: &str) -> Text {
     Text::translate(key, &[])
 }
 
-/// The source the pack screen browses: the first enabled registered one, else the built-in.
-fn source() -> &'static dyn Source {
-    packs::engine::source().unwrap_or(&*BUILTIN)
+/// The source a pack screen browses, which gives it its Add button.
+#[derive(Clone, Copy)]
+pub struct Browsing(pub &'static dyn Source);
+
+impl Browsing {
+    /// The first enabled registered source, if any.
+    pub fn registered() -> Option<Self> {
+        packs::engine::source().map(Self)
+    }
+    /// The Add button's tooltip.
+    pub fn add_label(self) -> Text {
+        tr(self.0.labels().add)
+    }
+    /// The browse screen on `query`, the text already in the pack filter, searching it.
+    pub fn open(self, m: &Measure, query: &str) -> View {
+        View::open(self.0, m, query)
+    }
 }
 
-/// Whether the Add button shows.
-pub fn available() -> bool {
-    source().enabled()
-}
-
-/// Lets the built-in source be used by this player ([`Source::enabled`]), as the `packBrowser`
-/// extra says.
-pub fn allow_builtin(on: bool) {
-    BUILTIN
-        .seats()
-        .entry(sunrise_hooks::seat())
-        .or_default()
-        .allowed = on;
+impl std::fmt::Debug for Browsing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Browsing")
+    }
 }
 
 /// What a click on the browse screen did.
@@ -136,22 +140,29 @@ impl Geom {
     }
 }
 
-/// One browse screen's session with the source chosen when it opened, closed when it drops.
-pub struct Session(&'static dyn Source);
+/// One browse screen's session with the source chosen when it opened, on the seat it opened on,
+/// closed when it drops.
+pub struct Session {
+    source: &'static dyn Source,
+    seat: usize,
+}
 
 impl Session {
     fn open(source: &'static dyn Source) -> Self {
         source.open();
-        Self(source)
+        Self {
+            source,
+            seat: sunrise_hooks::seat(),
+        }
     }
     pub fn source(&self) -> &'static dyn Source {
-        self.0
+        self.source
     }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        self.0.close();
+        self.source.close(self.seat);
     }
 }
 
@@ -187,14 +198,9 @@ pub struct View {
 }
 
 impl View {
-    /// Opens on `query`, the text already in the pack filter, and searches it.
-    pub fn open(m: &Measure, query: &str) -> Self {
-        Self::open_on(source(), m, query)
-    }
-
-    fn open_on(source: &'static dyn Source, m: &Measure, query: &str) -> Self {
+    fn open(source: &'static dyn Source, m: &Measure, query: &str) -> Self {
         let mut field = TextField::new(0, 0, SEARCH_W, 18);
-        field.hint = Some(tr("sunrise.pack.searchHint").with_style(&Style {
+        field.hint = Some(tr(source.labels().search_hint).with_style(&Style {
             color: Some(d::GRAY),
             italic: Some(true),
             ..Style::default()
@@ -411,7 +417,7 @@ impl View {
         }
         let (px, py, pw, ph) = g.area();
         let message = if self.busy && self.installing.is_none() {
-            Some(tr("sunrise.pack.addWorking"))
+            Some(tr(self.session.source().labels().working))
         } else if let Some(status) = &self.status {
             Some(Text::translate(
                 "sunrise.pack.addFailed",
@@ -551,96 +557,17 @@ impl View {
     }
 }
 
-/// What the engine keeps for one player on the built-in source.
-#[derive(Default)]
-struct Seat {
-    allowed: bool,
-    browser: Option<Browser>,
-}
-
-/// The Modrinth client in [`Browser`], used while no crate registers a [`Source`].
-struct Builtin {
-    seats: Mutex<BTreeMap<usize, Seat>>,
-}
-
-static BUILTIN: LazyLock<Builtin> = LazyLock::new(|| Builtin {
-    seats: Mutex::new(BTreeMap::new()),
-});
-
-static FILTER_KEYS: LazyLock<Vec<&'static str>> =
-    LazyLock::new(|| crate::pack_browser::FILTERS.iter().map(|f| f.0).collect());
-
-impl Builtin {
-    fn seats(&self) -> std::sync::MutexGuard<'_, BTreeMap<usize, Seat>> {
-        self.seats.lock().unwrap_or_else(|e| e.into_inner())
-    }
-}
-
-impl Source for Builtin {
-    fn enabled(&self) -> bool {
-        self.seats()
-            .get(&sunrise_hooks::seat())
-            .is_some_and(|s| s.allowed)
-    }
-    fn filters(&self) -> &'static [&'static str] {
-        &FILTER_KEYS
-    }
-    fn open(&self) {
-        self.seats()
-            .entry(sunrise_hooks::seat())
-            .or_default()
-            .browser = Some(Browser::new());
-    }
-    fn search(&self, query: &str, chosen: &[usize]) {
-        if let Some(b) = self
-            .seats()
-            .get_mut(&sunrise_hooks::seat())
-            .and_then(|s| s.browser.as_mut())
-        {
-            b.search(query, chosen);
-        }
-    }
-    fn fetch_icons(&self) {
-        if let Some(b) = self
-            .seats()
-            .get(&sunrise_hooks::seat())
-            .and_then(|s| s.browser.as_ref())
-        {
-            b.fetch_icons();
-        }
-    }
-    fn download(&self, hit: usize, dir: &Path, game_version: &str) {
-        if let Some(b) = self
-            .seats()
-            .get_mut(&sunrise_hooks::seat())
-            .and_then(|s| s.browser.as_mut())
-        {
-            b.download(hit, dir, game_version);
-        }
-    }
-    fn poll(&self) -> Option<Message> {
-        self.seats()
-            .get_mut(&sunrise_hooks::seat())?
-            .browser
-            .as_mut()?
-            .poll()
-    }
-    fn close(&self) {
-        if let Some(seat) = self.seats().get_mut(&sunrise_hooks::seat()) {
-            seat.browser = None;
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct Fake {
         searches: AtomicUsize,
         downloads: AtomicUsize,
-        closes: AtomicUsize,
+        /// The seats whose sessions were closed, in order.
+        closed: Mutex<Vec<usize>>,
     }
 
     impl Fake {
@@ -648,8 +575,11 @@ mod tests {
             Self {
                 searches: AtomicUsize::new(0),
                 downloads: AtomicUsize::new(0),
-                closes: AtomicUsize::new(0),
+                closed: Mutex::new(Vec::new()),
             }
+        }
+        fn closed(&self) -> Vec<usize> {
+            self.closed.lock().unwrap().clone()
         }
     }
 
@@ -659,6 +589,13 @@ mod tests {
         }
         fn filters(&self) -> &'static [&'static str] {
             &["a", "b"]
+        }
+        fn labels(&self) -> packs::Labels {
+            packs::Labels {
+                add: "test.add",
+                search_hint: "test.hint",
+                working: "test.working",
+            }
         }
         fn open(&self) {}
         fn search(&self, _: &str, _: &[usize]) {
@@ -671,8 +608,8 @@ mod tests {
         fn poll(&self) -> Option<Message> {
             None
         }
-        fn close(&self) {
-            self.closes.fetch_add(1, Ordering::Relaxed);
+        fn close(&self, seat: usize) {
+            self.closed.lock().unwrap().push(seat);
         }
     }
 
@@ -763,23 +700,19 @@ mod tests {
         static FAKE: Fake = Fake::new();
         let mut icons = HashMap::new();
         view(&FAKE).close(&mut icons);
-        assert_eq!(FAKE.closes.load(Ordering::Relaxed), 1);
+        assert_eq!(FAKE.closed(), [0]);
         // Escape, an install that rebuilds the screen, or leaving it: the view is just dropped.
         drop(view(&FAKE));
-        assert_eq!(FAKE.closes.load(Ordering::Relaxed), 2);
+        assert_eq!(FAKE.closed(), [0, 0]);
     }
 
     #[test]
-    fn reopening_the_built_in_source_drops_a_busy_session() {
-        let b = &*BUILTIN;
-        b.open();
-        {
-            let mut seats = b.seats();
-            let seat = seats.get_mut(&sunrise_hooks::seat()).unwrap();
-            seat.browser.as_mut().unwrap().busy = true;
-        }
-        b.open();
-        let seats = b.seats();
-        assert!(!seats[&sunrise_hooks::seat()].browser.as_ref().unwrap().busy);
+    fn a_view_dropped_on_another_players_turn_closes_its_own_seat() {
+        static FAKE: Fake = Fake::new();
+        sunrise_hooks::engine::set_seat(1);
+        let guest = view(&FAKE);
+        sunrise_hooks::engine::set_seat(0);
+        drop(guest);
+        assert_eq!(FAKE.closed(), [1]);
     }
 }
