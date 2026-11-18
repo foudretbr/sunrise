@@ -203,10 +203,11 @@ is not empty, passing the fluid (`FluidState`) and its position. The contract is
 |---|---|
 | `Some(true)` | This position waters the farmland; the first one ends the scan and moisture goes to 7. |
 | `Some(false)` | This position does not water it, whatever the fluid. |
-| `None` | Vanilla's rule for this position: a fluid in `#minecraft:water`. |
+| `None` | Vanilla's rule for this position if the owner's rule is not held: a fluid in `#minecraft:water`. |
 
-Rain on the block above, the watered-area ticket, moisture changes and drying out are unchanged. With no part on the
-farmland the scan is vanilla's.
+Normally rain on the block above, session water tickets and dry-out work as usual. With no Part on the farmland the
+scan is vanilla's. When the content owner's subscribed rule is [switched off](../disabled-content.md), only earlier
+enabled Parts or an enabled mod's session water ticket can wet the block. Rain and dry-out are held, not trampling.
 Bookshelf slot-occupancy flags and the last-interacted slot are transactional storage bookkeeping,
 not notification effects. Aborting restores them with the items. Changed observers, comparator
 ticks and data-send requests already issued still survive that abort.

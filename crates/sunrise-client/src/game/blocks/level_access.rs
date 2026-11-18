@@ -688,6 +688,12 @@ impl LevelAccess for GameLevel<'_> {
                 state,
             )
     }
+    fn hold_farmland_hydration(&self, state: BlockStateId) -> bool {
+        mod_api::__private::any_mod_disabled()
+            && state.try_into_api().is_ok_and(|state| {
+                mod_api::__private::block_hook_inert(mod_api::HookId::CanBeHydrated, state)
+            })
+    }
     fn before_can_be_hydrated(
         &self,
         state: BlockStateId,
