@@ -88,7 +88,7 @@ callee without arguments: `autosave_interval` or `self.next_autosave_interval`. 
 | `variable` | `MODIFY_VARIABLE` | `{ name, ordinal, at = "LOAD" or "STORE", parameter = true for a parameter }`. It replaces `selector`; `require` and `ordinal` then count accesses. |
 | `priority` | no | Orders rows of several mods at one place: **higher** runs first. The default is 100. (Loop slots run the other way.) |
 | `result` | `MODIFY_ARGS`, and `AFTER_CALL` reading the result | The selected call's result type. Refused on other kinds. |
-| `fingerprint` | `OVERWRITE` (required), any other kind (optional) | A hash of the target function's signature and body tokens as staged for the active build; ordinary comments and layout do not change it, outer attributes are not part of it, and a `cfg` that differs in the active build can change it. It therefore changes whenever the function changes in a new game build. A row whose target differs is refused with `E_FINGERPRINT`. Take the value from the build's own refusal (leave it out once and copy `got`), never from the original source text: the build stages a copy of the function. When the game changes the function, read the new function, check your replacement still suits it, then update the value. |
+| `fingerprint` | `OVERWRITE` (required), any other kind (optional) | A hash of the tokens of the target function's staged signature and body for the active build: any change to those tokens changes it, while ordinary comments and layout do not, outer attributes are not part of it, and a `cfg` that differs in the active build can change it. It therefore changes whenever the function changes in a new game build. A row whose target differs is refused with `E_FINGERPRINT`, which names the current value as `got`. On an `OVERWRITE` row, leave the pin out once and copy `got` from the refusal; on any other kind an omitted pin is not checked and nothing prints the hash, so a stale pin's refusal is where you read it. Never compute it from the original source text: the build stages a copy of the function. When the game changes the function, read the new function, check your replacement still suits it, then update the value. |
 | `slice`, `argument` | no | `slice = { from = { selector, ordinal, require } }` narrows the search to a region; `argument` picks an argument. Both are in the tool's docs below. |
 
 | Tool `value` | The helper gets |
@@ -142,7 +142,7 @@ The tool plans against what the patch library compiles. The launcher gives it th
 ## With other mods
 
 Several mods' rows on one function all apply. An `OVERWRITE` must be the only mixin on its function,
-from any mod including its own, and that includes a `HEAD` or a `WRAP_OPERATION` inside it. The tool plans every mod selected for a native build together, so a conflict between mods is found when they are built together, not when one package is checked, and not when an already built library loads. Two rows of one mod are fixed by removing one of them; rows of two mods, by installing only one of the mods. An `[[inject]]` listener may share a function with mixins: head listeners run first, then the
+from any mod including its own, and that includes a `HEAD` or a `WRAP_OPERATION` inside it. The tool plans every mod selected for a native build together, so a conflict between mods is found when they are built together, not when one package is checked, and not when an already built library loads. An `[[inject]]` listener may share a function with mixins: head listeners run first, then the
 mixed-in function, then return listeners.
 
 ## Errors
@@ -161,7 +161,7 @@ A row the build can't apply stops the build, naming the mod, the row and the rea
 | | `<target>: <reason>`, such as ``it is generic over types or takes `impl Trait` …`` | Target a caller or callee that can be copied. |
 | `E_MIXIN_SOURCE` | `<target>: <why>`, such as `<file> differs from this game build's functions.json` | The game's source could not be read, or is not the build's: retry the build. |
 | `E_MIXIN_INDEX` | `<path>: …: the game build's SDK has no function index …`, or `functions.json describes game build <commit>, not <commit>` | The SDK on disk is damaged or another build's: fetch the SDK again. |
-| `E_OVERWRITE_CONFLICT` | from the tool: `OVERWRITE must be exclusive on <function>; competing injections: <mod>/<row>, …`; it names every row, of any mods, on the function | Keep only one of those mods installed. |
+| `E_OVERWRITE_CONFLICT` | from the tool: `OVERWRITE must be exclusive on <function>; competing injections: <mod>/<row>, …`; it names every row, of any mods, on the function | For competing rows of one mod, remove one of those rows. For rows of different mods, keep only one of those mods installed. |
 | `E_FINGERPRINT` | from the tool: `original function changed; expected <hash>, got <hash>`, or for an `OVERWRITE` with none: ``OVERWRITE requires the `fingerprint` of the function it replaces; expected <none>, got <hash>`` | Check the game's new function still suits your replacement, then set `fingerprint` to the `got` value. |
 | `E_LOOP_ENTRY_REPLACED` | see [Published loops](3-loops.md#errors) | |
 | `E_MIXINS_PATCH` | `tools/mixins/narrow-reference-rule.patch does not apply to horizon-mixins <commit>: <why>` | Not your mod: report it on the game. |
